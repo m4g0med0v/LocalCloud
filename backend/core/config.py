@@ -1,20 +1,27 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from core.constants import ApplicationConstants as APC
+from core.constants import LoggingConstants as LGC
+from core.constants import LoggingLevels
+
+SETTINGS_CONFIG: SettingsConfigDict = SettingsConfigDict(
+    env_file=".env",
+    env_file_encoding="utf-8",
+    case_sensitive=False,
+    extra="ignore",
+)
 
 
 class ApplicationSettings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-        extra="ignore",
-    )
+    """Настройки приложения."""
+
+    model_config = SETTINGS_CONFIG
 
     app_name: str = Field(default=APC.APP_NAME, alias="APP_NAME")
     app_version: str = Field(default=APC.APP_VERSION, alias="APP_VERSION")
@@ -26,17 +33,39 @@ class ApplicationSettings(BaseSettings):
     @field_validator("api_prefix", "api_v1_prefix")
     @classmethod
     def ensure_leading_slash(cls, value: str) -> str:
+        """Добавить ведущий слеш к API-префиксу, если он отсутствует."""
         if not value.startswith("/"):
             return f"/{value}"
         return value
 
 
-class Settings:
+class LoggingSettings(BaseSettings):
+    """Настройки логирования."""
+
+    model_config = SETTINGS_CONFIG
+
+    log_level: LoggingLevels = Field(
+        default=LGC.LOG_LEVEL,
+        alias="LOG_LEVEL",
+    )
+    log_json: bool = Field(default=LGC.LOG_JSON, alias="LOG_JSON")
+    log_file_enabled: bool = Field(
+        default=LGC.LOG_FILE_ENABLED,
+        alias="LOG_FILE_ENABLED",
+    )
+    log_file_path: Path = Field(default=LGC.LOG_FILE_PATH, alias="LOG_FILE_PATH")
+
+
+class Settings(BaseModel):
+    """Общие настройки приложения."""
+
     app: ApplicationSettings = Field(default_factory=ApplicationSettings)
+    logging: LoggingSettings = Field(default_factory=LoggingSettings)
 
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
+    """Вернуть кэшированный экземпляр настроек."""
     return Settings()
 
 
