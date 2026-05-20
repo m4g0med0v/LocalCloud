@@ -10,18 +10,16 @@ from core.constants import ApplicationConstants as APC
 from core.constants import LoggingConstants as LGC
 from core.constants import LoggingLevels
 
-SETTINGS_CONFIG: SettingsConfigDict = SettingsConfigDict(
-    env_file=".env",
-    env_file_encoding="utf-8",
-    case_sensitive=False,
-    extra="ignore",
-)
-
 
 class ApplicationSettings(BaseSettings):
     """Настройки приложения."""
 
-    model_config = SETTINGS_CONFIG
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
 
     app_name: str = Field(default=APC.APP_NAME, alias="APP_NAME")
     app_version: str = Field(default=APC.APP_VERSION, alias="APP_VERSION")
@@ -42,7 +40,12 @@ class ApplicationSettings(BaseSettings):
 class LoggingSettings(BaseSettings):
     """Настройки логирования."""
 
-    model_config = SETTINGS_CONFIG
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
 
     log_level: LoggingLevels = Field(
         default=LGC.LOG_LEVEL,

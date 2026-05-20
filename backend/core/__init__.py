@@ -1,5 +1,4 @@
 from core.config import (
-    SETTINGS_CONFIG,
     ApplicationSettings,
     LoggingSettings,
     Settings,
@@ -19,7 +18,6 @@ from core.logging import (
 
 __all__ = [
     # Config
-    "SETTINGS_CONFIG",
     "ApplicationSettings",
     "LoggingSettings",
     "Settings",
