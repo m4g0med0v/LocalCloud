@@ -25,7 +25,16 @@ def _build_error_details(
     *,
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Сформировать диагностические данные для ошибки транзакции."""
+    """Формирует диагностические данные для ошибки транзакции.
+
+    Args:
+        exc: Исходное исключение.
+        extra: Дополнительные диагностические данные.
+
+    Returns:
+        Словарь с диагностическими данными ошибки.
+    """
+
     details: dict[str, Any] = {
         "original_error": str(exc),
         "original_error_type": exc.__class__.__name__,
@@ -38,7 +47,17 @@ def _build_error_details(
 
 
 async def _rollback_after_failure(session: AsyncSession) -> dict[str, Any]:
-    """Попытаться выполнить rollback после неудачной операции."""
+    """Пытается выполнить rollback после неудачной операции.
+
+    Args:
+        session: Асинхронная SQLAlchemy-сессия.
+
+    Returns:
+        Пустой словарь, если rollback выполнен успешно. Если rollback
+        завершился ошибкой, возвращает словарь с диагностическими данными
+        ошибки rollback.
+    """
+
     try:
         await session.rollback()
 
@@ -69,6 +88,7 @@ async def safe_commit(
         DatabaseTimeoutError: Если commit завершился по timeout.
         TransactionCommitError: Если commit завершился ошибкой SQLAlchemy.
     """
+
     try:
         await session.commit()
 
@@ -125,6 +145,7 @@ async def safe_rollback(
         TransactionRollbackError: Если rollback завершился ошибкой и
             suppress_errors=False.
     """
+
     try:
         await session.rollback()
 
@@ -166,6 +187,7 @@ async def safe_flush(
         DatabaseTimeoutError: Если flush завершился по timeout.
         TransactionError: Если flush завершился ошибкой SQLAlchemy.
     """
+
     try:
         await session.flush()
 
@@ -214,6 +236,7 @@ async def safe_refresh(
         DatabaseTimeoutError: Если refresh завершился по timeout.
         TransactionError: Если refresh завершился ошибкой SQLAlchemy.
     """
+
     details_extra = {
         "operation": operation,
         "model": instance.__class__.__name__,
@@ -263,6 +286,7 @@ async def safe_flush_and_refresh(
         DatabaseTimeoutError: Если flush или refresh завершились по timeout.
         TransactionError: Если flush или refresh завершились ошибкой SQLAlchemy.
     """
+
     await safe_flush(session, operation=f"{operation}.flush")
 
     return await safe_refresh(
@@ -300,6 +324,7 @@ async def transaction(
         DatabaseTimeoutError: Если commit завершился по timeout.
         TransactionCommitError: Если commit завершился ошибкой SQLAlchemy.
     """
+
     try:
         yield session
 
@@ -340,6 +365,7 @@ async def readonly_transaction(
     Yields:
         Переданная SQLAlchemy-сессия.
     """
+
     try:
         yield session
 
@@ -380,6 +406,7 @@ async def nested_transaction(
         DatabaseTimeoutError: Если SAVEPOINT завершился по timeout.
         TransactionError: Если SAVEPOINT завершился ошибкой SQLAlchemy.
     """
+
     try:
         async with session.begin_nested():
             yield session
@@ -421,6 +448,7 @@ async def ensure_transaction_closed(
     Raises:
         TransactionRollbackError: Если rollback завершился ошибкой.
     """
+
     if not session.in_transaction():
         return
 
@@ -447,6 +475,7 @@ async def reset_session_state(
     Raises:
         TransactionRollbackError: Если rollback завершился ошибкой.
     """
+
     if session.in_transaction():
         await safe_rollback(
             session,

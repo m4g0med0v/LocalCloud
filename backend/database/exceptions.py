@@ -13,6 +13,14 @@ class DatabaseError(Exception):
         details: dict[str, Any] | None = None,
         cause: BaseException | None = None,
     ) -> None:
+        """Инициализирует исключение базы данных.
+
+        Args:
+            message: Человекочитаемое описание ошибки.
+            details: Дополнительные диагностические данные ошибки.
+            cause: Исходное исключение, ставшее причиной ошибки.
+        """
+
         self.message = message
         self.details = details.copy() if details else {}
         self.cause = cause
@@ -23,14 +31,22 @@ class DatabaseError(Exception):
             self.__cause__ = cause
 
     def __str__(self) -> str:
-        """Вернуть человекочитаемое описание ошибки."""
+        """Возвращает человекочитаемое описание ошибки.
+
+        Returns:
+            Строковое описание ошибки.
+        """
         if not self.details:
             return self.message
 
         return f"{self.message} Details: {self.details}"
 
     def to_dict(self) -> dict[str, Any]:
-        """Возвращает сериализуемое представление ошибки."""
+        """Возвращает сериализуемое представление ошибки.
+
+        Returns:
+            Словарь с типом ошибки, сообщением, деталями и причиной.
+        """
 
         payload: dict[str, Any] = {
             "error": self.__class__.__name__,
@@ -59,6 +75,17 @@ class DatabaseConnectionError(DatabaseError):
         details: dict[str, Any] | None = None,
         cause: BaseException | None = None,
     ) -> None:
+        """Инициализирует исключение подключения к базе данных.
+
+        Args:
+            message: Человекочитаемое описание ошибки.
+            host: Хост базы данных.
+            port: Порт базы данных.
+            database: Имя базы данных.
+            details: Дополнительные диагностические данные ошибки.
+            cause: Исходное исключение, ставшее причиной ошибки.
+        """
+
         merged_details = details.copy() if details else {}
 
         if host is not None:
@@ -89,6 +116,16 @@ class DatabaseTimeoutError(DatabaseError):
         details: dict[str, Any] | None = None,
         cause: BaseException | None = None,
     ) -> None:
+        """Инициализирует исключение таймаута операции с базой данных.
+
+        Args:
+            message: Человекочитаемое описание ошибки.
+            operation: Название операции, для которой истекло время ожидания.
+            timeout_seconds: Значение таймаута в секундах.
+            details: Дополнительные диагностические данные ошибки.
+            cause: Исходное исключение, ставшее причиной ошибки.
+        """
+
         merged_details = details.copy() if details else {}
 
         if operation is not None:
@@ -105,9 +142,7 @@ class DatabaseTimeoutError(DatabaseError):
 
 
 class TransactionError(DatabaseError):
-    """
-    Базовое исключение для ошибок транзакций.
-    """
+    """Базовое исключение для ошибок транзакций."""
 
     def __init__(
         self,
@@ -117,6 +152,15 @@ class TransactionError(DatabaseError):
         details: dict[str, Any] | None = None,
         cause: BaseException | None = None,
     ) -> None:
+        """Инициализирует исключение транзакции.
+
+        Args:
+            message: Человекочитаемое описание ошибки.
+            operation: Название операции транзакции.
+            details: Дополнительные диагностические данные ошибки.
+            cause: Исходное исключение, ставшее причиной ошибки.
+        """
+
         merged_details = details.copy() if details else {}
 
         if operation is not None:
@@ -130,9 +174,7 @@ class TransactionError(DatabaseError):
 
 
 class TransactionCommitError(TransactionError):
-    """
-    Возникает при ошибке фиксации транзакции.
-    """
+    """Возникает при ошибке фиксации транзакции."""
 
     def __init__(
         self,
@@ -141,6 +183,14 @@ class TransactionCommitError(TransactionError):
         details: dict[str, Any] | None = None,
         cause: BaseException | None = None,
     ) -> None:
+        """Инициализирует исключение фиксации транзакции.
+
+        Args:
+            message: Человекочитаемое описание ошибки.
+            details: Дополнительные диагностические данные ошибки.
+            cause: Исходное исключение, ставшее причиной ошибки.
+        """
+
         super().__init__(
             message,
             operation="commit",
@@ -150,9 +200,7 @@ class TransactionCommitError(TransactionError):
 
 
 class TransactionRollbackError(TransactionError):
-    """
-    Возникает при ошибке отката транзакции.
-    """
+    """Возникает при ошибке отката транзакции."""
 
     def __init__(
         self,
@@ -161,9 +209,300 @@ class TransactionRollbackError(TransactionError):
         details: dict[str, Any] | None = None,
         cause: BaseException | None = None,
     ) -> None:
+        """Инициализирует исключение отката транзакции.
+
+        Args:
+            message: Человекочитаемое описание ошибки.
+            details: Дополнительные диагностические данные ошибки.
+            cause: Исходное исключение, ставшее причиной ошибки.
+        """
+
         super().__init__(
             message,
             operation="rollback",
             details=details,
             cause=cause,
+        )
+
+
+class RepositoryError(DatabaseError):
+    """Базовое исключение для ошибок слоя репозитория.
+
+    Используется, когда ошибка возникает внутри репозитория, но не подходит
+    под более конкретный тип.
+    """
+
+    def __init__(
+        self,
+        message: str = "Операция репозитория не удалась.",
+        *,
+        repository: str | None = None,
+        operation: str | None = None,
+        details: dict[str, Any] | None = None,
+        cause: BaseException | None = None,
+    ) -> None:
+        """Инициализирует исключение слоя репозитория.
+
+        Args:
+            message: Человекочитаемое описание ошибки.
+            repository: Название репозитория, в котором возникла ошибка.
+            operation: Название операции репозитория.
+            details: Дополнительные диагностические данные ошибки.
+            cause: Исходное исключение, ставшее причиной ошибки.
+        """
+
+        merged_details = details.copy() if details else {}
+
+        if repository is not None:
+            merged_details["repository"] = repository
+
+        if operation is not None:
+            merged_details["operation"] = operation
+
+        super().__init__(
+            message,
+            details=merged_details,
+            cause=cause,
+        )
+
+
+class DuplicateEntityError(RepositoryError):
+    """Возникает при нарушении уникальности сущности.
+
+    Примеры:
+        - пользователь с таким email уже существует;
+        - роль с таким названием уже существует;
+        - файл или папка с таким именем уже существует в каталоге.
+    """
+
+    def __init__(
+        self,
+        entity_name: str,
+        *,
+        field: str | None = None,
+        value: Any | None = None,
+        repository: str | None = None,
+        message: str | None = None,
+        cause: BaseException | None = None,
+    ) -> None:
+        """Инициализирует исключение дублирования сущности.
+
+        Args:
+            entity_name: Название сущности.
+            field: Название поля, по которому обнаружен дубль.
+            value: Значение поля, по которому обнаружен дубль.
+            repository: Название репозитория, в котором возникла ошибка.
+            message: Пользовательское описание ошибки.
+            cause: Исходное исключение, ставшее причиной ошибки.
+        """
+
+        details: dict[str, Any] = {
+            "entity": entity_name,
+        }
+
+        if field is not None:
+            details["field"] = field
+
+        if value is not None:
+            details["value"] = value
+
+        if field is not None and value is not None:
+            default_message = (
+                f"Сущность '{entity_name}' с {field}='{value}' уже существует."
+            )
+        else:
+            default_message = f"Сущность '{entity_name}' уже существует."
+
+        super().__init__(
+            message or default_message,
+            repository=repository,
+            operation="create",
+            details=details,
+            cause=cause,
+        )
+
+
+class ConstraintViolationError(RepositoryError):
+    """Возникает при нарушении ограничения базы данных.
+
+    Примеры:
+        - нарушение внешнего ключа;
+        - нарушение CHECK-ограничения;
+        - нарушение NOT NULL;
+        - недопустимая связь между сущностями.
+    """
+
+    def __init__(
+        self,
+        message: str = "Нарушено ограничение базы данных.",
+        *,
+        constraint_name: str | None = None,
+        table_name: str | None = None,
+        column_name: str | None = None,
+        repository: str | None = None,
+        operation: str | None = None,
+        details: dict[str, Any] | None = None,
+        cause: BaseException | None = None,
+    ) -> None:
+        """Инициализирует исключение нарушения ограничения базы данных.
+
+        Args:
+            message: Человекочитаемое описание ошибки.
+            constraint_name: Название нарушенного ограничения.
+            table_name: Название таблицы, связанной с нарушением.
+            column_name: Название колонки, связанной с нарушением.
+            repository: Название репозитория, в котором возникла ошибка.
+            operation: Название операции репозитория.
+            details: Дополнительные диагностические данные ошибки.
+            cause: Исходное исключение, ставшее причиной ошибки.
+        """
+
+        merged_details = details.copy() if details else {}
+
+        if constraint_name is not None:
+            merged_details["constraint_name"] = constraint_name
+
+        if table_name is not None:
+            merged_details["table_name"] = table_name
+
+        if column_name is not None:
+            merged_details["column_name"] = column_name
+
+        super().__init__(
+            message,
+            repository=repository,
+            operation=operation,
+            details=merged_details,
+            cause=cause,
+        )
+
+
+class EntityNotFoundError(RepositoryError):
+    """Возникает, когда запрошенная сущность не найдена.
+
+    Примеры:
+        - пользователь с указанным ID не существует;
+        - роль не найдена;
+        - файл или папка не найдены;
+        - refresh token отсутствует;
+        - публичная ссылка не существует.
+    """
+
+    def __init__(
+        self,
+        entity_name: str,
+        *,
+        entity_id: Any | None = None,
+        lookup: dict[str, Any] | None = None,
+        repository: str | None = None,
+        message: str | None = None,
+        cause: BaseException | None = None,
+    ) -> None:
+        """Инициализирует исключение отсутствующей сущности.
+
+        Args:
+            entity_name: Название сущности.
+            entity_id: Идентификатор сущности.
+            lookup: Параметры поиска сущности.
+            repository: Название репозитория, в котором возникла ошибка.
+            message: Пользовательское описание ошибки.
+            cause: Исходное исключение, ставшее причиной ошибки.
+        """
+
+        details: dict[str, Any] = {
+            "entity": entity_name,
+        }
+
+        if entity_id is not None:
+            details["entity_id"] = entity_id
+
+        if lookup is not None:
+            details["lookup"] = lookup
+
+        default_message = f"Сущность '{entity_name}' не найдена."
+
+        super().__init__(
+            message or default_message,
+            repository=repository,
+            operation="get",
+            details=details,
+            cause=cause,
+        )
+
+
+class InvalidQueryError(RepositoryError):
+    """Возникает, когда репозиторий получает недопустимые параметры запроса.
+
+    Примеры:
+        - отрицательный offset;
+        - limit больше допустимого значения;
+        - неподдерживаемое поле сортировки;
+        - неподдерживаемый фильтр.
+    """
+
+    def __init__(
+        self,
+        message: str = "Недопустимые параметры запроса к базе данных.",
+        *,
+        repository: str | None = None,
+        operation: str | None = None,
+        details: dict[str, Any] | None = None,
+        cause: BaseException | None = None,
+    ) -> None:
+        """Инициализирует исключение недопустимого запроса.
+
+        Args:
+            message: Человекочитаемое описание ошибки.
+            repository: Название репозитория, в котором возникла ошибка.
+            operation: Название операции репозитория.
+            details: Дополнительные диагностические данные ошибки.
+            cause: Исходное исключение, ставшее причиной ошибки.
+        """
+
+        super().__init__(
+            message,
+            repository=repository,
+            operation=operation,
+            details=details,
+            cause=cause,
+        )
+
+
+class InvalidPaginationError(InvalidQueryError):
+    """Возникает при некорректных параметрах пагинации."""
+
+    def __init__(
+        self,
+        message: str = "Недопустимые параметры пагинации.",
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
+        max_limit: int | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        """Инициализирует исключение некорректной пагинации.
+
+        Args:
+            message: Человекочитаемое описание ошибки.
+            limit: Запрошенное ограничение количества записей.
+            offset: Смещение выборки.
+            max_limit: Максимально допустимое значение ``limit``.
+            details: Дополнительные диагностические данные ошибки.
+        """
+
+        merged_details = details.copy() if details else {}
+
+        if limit is not None:
+            merged_details["limit"] = limit
+
+        if offset is not None:
+            merged_details["offset"] = offset
+
+        if max_limit is not None:
+            merged_details["max_limit"] = max_limit
+
+        super().__init__(
+            message,
+            operation="paginate",
+            details=merged_details,
         )

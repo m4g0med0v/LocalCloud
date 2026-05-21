@@ -27,6 +27,7 @@ async_session_factory: async_sessionmaker[AsyncSession] | None = None
 
 def is_db_client_initialized() -> bool:
     """Проверяет, был ли инициализирован клиент базы данных."""
+
     return async_engine is not None and async_session_factory is not None
 
 
@@ -43,6 +44,7 @@ def init_db_client(settings: DatabaseSettings) -> None:
         DatabaseConnectionError: Если клиент уже инициализирован или
             инициализация завершилась ошибкой.
     """
+
     global async_engine
     global async_session_factory
 
@@ -109,6 +111,7 @@ async def close_db_client() -> None:
     Raises:
         DatabaseError: Если клиент не удалось закрыть.
     """
+
     global async_engine
     global async_session_factory
 
@@ -140,6 +143,7 @@ def get_async_engine() -> AsyncEngine:
         DatabaseConnectionError: Если клиент базы данных не был
             инициализирован.
     """
+
     if async_engine is None:
         raise DatabaseConnectionError(
             "Движок базы данных не инициализирован.",
@@ -158,6 +162,7 @@ def get_async_session_factory() -> async_sessionmaker[AsyncSession]:
         DatabaseConnectionError: Если фабрика сессий не была
             инициализирована.
     """
+
     if async_session_factory is None:
         raise DatabaseConnectionError(
             "Фабрика сессий базы данных не инициализирована.",
@@ -171,6 +176,7 @@ def get_async_session_factory() -> async_sessionmaker[AsyncSession]:
 
 def create_session() -> AsyncSession:
     """Создать новую AsyncSession из глобальной фабрики."""
+
     session_factory = get_async_session_factory()
     return session_factory()
 
@@ -190,6 +196,7 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
         DatabaseConnectionError: Если возникла ошибка соединения.
         DatabaseError: Если операция с сессией завершилась ошибкой SQLAlchemy.
     """
+
     session_factory = get_async_session_factory()
 
     async with session_factory() as session:
@@ -240,6 +247,7 @@ async def ping_database() -> bool:
         DatabaseTimeoutError: Если соединение или запрос завершились по
             timeout.
     """
+
     engine = get_async_engine()
 
     try:
