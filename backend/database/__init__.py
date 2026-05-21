@@ -27,6 +27,12 @@ from database.exceptions import (
     TransactionRollbackError,
     UnitOfWorkError,
 )
+from database.health import (
+    check_database_connection,
+    check_database_health,
+    check_database_latency,
+    get_database_health_report,
+)
 from database.transactions import (
     ensure_transaction_closed,
     nested_transaction,
@@ -75,6 +81,11 @@ __all__ = [
     "TransactionError",
     "TransactionRollbackError",
     "UnitOfWorkError",
+    # Health
+    "check_database_connection",
+    "check_database_health",
+    "check_database_latency",
+    "get_database_health_report",
     # Transactions
     "ensure_transaction_closed",
     "nested_transaction",

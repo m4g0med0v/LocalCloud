@@ -1,0 +1,289 @@
+from __future__ import annotations
+
+import time
+from typing import Any
+
+from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError, SQLAlchemyError, TimeoutError
+
+from database.client import get_async_session_factory
+from database.exceptions import (
+    DatabaseConnectionError,
+    DatabaseHealthCheckError,
+    DatabaseTimeoutError,
+)
+
+
+async def check_database_connection() -> bool:
+    """Проверить доступность подключения к PostgreSQL.
+
+    Выполняет простой запрос ``SELECT 1``. Если запрос успешен и результат
+    равен ``1``, база данных считается доступной.
+
+    Returns:
+        ``True``, если база данных доступна.
+
+    Raises:
+        DatabaseConnectionError: Если клиент базы данных не инициализирован,
+            соединение недоступно или PostgreSQL вернул неожиданный результат.
+        DatabaseTimeoutError: Если запрос завершился по timeout.
+    """
+
+    session_factory = get_async_session_factory()
+
+    try:
+        async with session_factory() as session:
+            result = await session.execute(text("SELECT 1"))
+            value = result.scalar_one()
+
+            if value != 1:
+                raise DatabaseConnectionError(
+                    "Проверка подключения к базе данных вернула неожиданный результат.",
+                    details={
+                        "expected": 1,
+                        "actual": value,
+                    },
+                )
+
+        return True
+
+    except DatabaseConnectionError:
+        raise
+
+    except TimeoutError as exc:
+        raise DatabaseTimeoutError(
+            "Время проверки подключения к базе данных истекло.",
+            operation="database_connection_check",
+            details={
+                "reason": str(exc),
+            },
+            cause=exc,
+        ) from exc
+
+    except DBAPIError as exc:
+        raise DatabaseConnectionError(
+            "Не удалось проверить подключение к базе данных из-за ошибки соединения.",
+            details={
+                "reason": str(exc),
+                "connection_invalidated": exc.connection_invalidated,
+            },
+            cause=exc,
+        ) from exc
+
+    except SQLAlchemyError as exc:
+        raise DatabaseConnectionError(
+            "Не удалось проверить подключение к базе данных.",
+            details={
+                "reason": str(exc),
+            },
+            cause=exc,
+        ) from exc
+
+
+async def check_database_latency() -> float:
+    """Измерить задержку ответа PostgreSQL.
+
+    Выполняет простой запрос ``SELECT 1`` и измеряет длительность операции.
+
+    Returns:
+        Задержка базы данных в миллисекундах.
+
+    Raises:
+        DatabaseHealthCheckError: Если проверка задержки не удалась.
+        DatabaseTimeoutError: Если запрос завершился по timeout.
+    """
+
+    session_factory = get_async_session_factory()
+    started_at = time.perf_counter()
+
+    try:
+        async with session_factory() as session:
+            await session.execute(text("SELECT 1"))
+
+    except TimeoutError as exc:
+        raise DatabaseTimeoutError(
+            "Время проверки задержки базы данных истекло.",
+            operation="database_latency_check",
+            details={
+                "reason": str(exc),
+            },
+            cause=exc,
+        ) from exc
+
+    except DBAPIError as exc:
+        raise DatabaseHealthCheckError(
+            "Не удалось выполнить проверку задержки базы данных из-за ошибки соединения.",
+            details={
+                "reason": str(exc),
+                "connection_invalidated": exc.connection_invalidated,
+            },
+            cause=exc,
+        ) from exc
+
+    except SQLAlchemyError as exc:
+        raise DatabaseHealthCheckError(
+            "Не удалось выполнить проверку задержки базы данных.",
+            details={
+                "reason": str(exc),
+            },
+            cause=exc,
+        ) from exc
+
+    finished_at = time.perf_counter()
+    latency_ms = (finished_at - started_at) * 1000
+
+    return round(latency_ms, 3)
+
+
+async def check_database_health(
+    *,
+    latency_threshold_ms: float | None = 1000.0,
+) -> dict[str, Any]:
+    """Проверить общее состояние PostgreSQL.
+
+    Проверяет:
+        - доступность соединения;
+        - задержку ответа;
+        - превышение допустимого порога задержки.
+
+    Args:
+        latency_threshold_ms: Максимально допустимая задержка в миллисекундах.
+            Если значение равно ``None``, проверка порога не выполняется.
+
+    Returns:
+        Словарь с информацией о состоянии базы данных.
+
+    Example:
+        >>> await check_database_health()
+        {
+            "component": "database",
+            "status": "healthy",
+            "connection": True,
+            "latency_ms": 12.451,
+            "latency_threshold_ms": 1000.0,
+        }
+
+    Raises:
+        DatabaseTimeoutError: Если задержка превышает
+            ``latency_threshold_ms``.
+        DatabaseHealthCheckError: Если проверка состояния не удалась.
+    """
+
+    try:
+        connection_ok = await check_database_connection()
+        latency_ms = await check_database_latency()
+
+        if latency_threshold_ms is not None and latency_ms > latency_threshold_ms:
+            raise DatabaseTimeoutError(
+                "Задержка базы данных слишком высока.",
+                timeout_seconds=latency_threshold_ms / 1000,
+                operation="database_health_check",
+                details={
+                    "latency_ms": latency_ms,
+                    "latency_threshold_ms": latency_threshold_ms,
+                },
+            )
+
+        return {
+            "component": "database",
+            "status": "healthy",
+            "connection": connection_ok,
+            "latency_ms": latency_ms,
+            "latency_threshold_ms": latency_threshold_ms,
+        }
+
+    except DatabaseTimeoutError:
+        raise
+
+    except DatabaseConnectionError as exc:
+        raise DatabaseHealthCheckError(
+            "Проверка работоспособности базы данных не удалась из-за недоступности подключения.",
+            details={
+                "reason": str(exc),
+            },
+            cause=exc,
+        ) from exc
+
+    except DatabaseHealthCheckError:
+        raise
+
+    except Exception as exc:
+        raise DatabaseHealthCheckError(
+            "Непредвиденная ошибка при проверке работоспособности базы данных.",
+            details={
+                "reason": str(exc),
+                "error_type": exc.__class__.__name__,
+            },
+            cause=exc,
+        ) from exc
+
+
+async def get_database_health_report(
+    *,
+    latency_threshold_ms: float | None = 1000.0,
+    raise_on_error: bool = False,
+) -> dict[str, Any]:
+    """Вернуть health-отчёт базы данных.
+
+    Метод удобен для общих health endpoint, где вместо проброса исключения
+    нужно вернуть статус ``degraded`` или ``unavailable``.
+
+    Args:
+        latency_threshold_ms: Максимально допустимая задержка в миллисекундах.
+            Если значение равно ``None``, проверка порога не выполняется.
+        raise_on_error: Если ``True``, исключения пробрасываются выше.
+            Если ``False``, ошибка преобразуется в словарь отчёта.
+
+    Returns:
+        Словарь health-отчёта.
+    """
+
+    try:
+        return await check_database_health(
+            latency_threshold_ms=latency_threshold_ms,
+        )
+
+    except DatabaseTimeoutError as exc:
+        if raise_on_error:
+            raise
+
+        return {
+            "component": "database",
+            "status": "degraded",
+            "connection": True,
+            "latency_ms": exc.details.get("latency_ms"),
+            "latency_threshold_ms": exc.details.get("latency_threshold_ms"),
+            "error": exc.__class__.__name__,
+            "message": exc.message,
+            "details": exc.details,
+        }
+
+    except DatabaseHealthCheckError as exc:
+        if raise_on_error:
+            raise
+
+        return {
+            "component": "database",
+            "status": "unavailable",
+            "connection": False,
+            "latency_ms": None,
+            "latency_threshold_ms": latency_threshold_ms,
+            "error": exc.__class__.__name__,
+            "message": exc.message,
+            "details": exc.details,
+        }
+
+    except DatabaseConnectionError as exc:
+        if raise_on_error:
+            raise
+
+        return {
+            "component": "database",
+            "status": "unavailable",
+            "connection": False,
+            "latency_ms": None,
+            "latency_threshold_ms": latency_threshold_ms,
+            "error": exc.__class__.__name__,
+            "message": exc.message,
+            "details": exc.details,
+        }

@@ -508,6 +508,30 @@ class InvalidPaginationError(InvalidQueryError):
         )
 
 
+class DatabaseHealthCheckError(DatabaseError):
+    """Возникает, когда проверка работоспособности базы данных не проходит."""
+
+    def __init__(
+        self,
+        message: str = "Проверка работоспособности базы данных не пройдена.",
+        *,
+        details: dict[str, Any] | None = None,
+        cause: BaseException | None = None,
+    ) -> None:
+        """Инициализирует исключение Unit of Work.
+
+        Args:
+            message: Человекочитаемое описание ошибки.
+            details: Дополнительные диагностические данные ошибки.
+            cause: Исходное исключение, ставшее причиной ошибки.
+        """
+        super().__init__(
+            message,
+            details=details,
+            cause=cause,
+        )
+
+
 class UnitOfWorkError(TransactionError):
     """Возникает при ошибке выполнения Unit of Work."""
 
