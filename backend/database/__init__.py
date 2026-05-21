@@ -16,6 +16,7 @@ from database.exceptions import (
     ConstraintViolationError,
     DatabaseConnectionError,
     DatabaseError,
+    DatabaseHealthCheckError,
     DatabaseTimeoutError,
     DuplicateEntityError,
     EntityNotFoundError,
@@ -81,6 +82,7 @@ __all__ = [
     "TransactionError",
     "TransactionRollbackError",
     "UnitOfWorkError",
+    "DatabaseHealthCheckError",
     # Health
     "check_database_connection",
     "check_database_health",
