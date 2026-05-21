@@ -506,3 +506,29 @@ class InvalidPaginationError(InvalidQueryError):
             operation="paginate",
             details=merged_details,
         )
+
+
+class UnitOfWorkError(TransactionError):
+    """Возникает при ошибке выполнения Unit of Work."""
+
+    def __init__(
+        self,
+        message: str = "Ошибка выполнения Unit of Work.",
+        *,
+        details: dict[str, Any] | None = None,
+        cause: BaseException | None = None,
+    ) -> None:
+        """Инициализирует исключение Unit of Work.
+
+        Args:
+            message: Человекочитаемое описание ошибки.
+            details: Дополнительные диагностические данные ошибки.
+            cause: Исходное исключение, ставшее причиной ошибки.
+        """
+
+        super().__init__(
+            message,
+            operation="unit_of_work",
+            details=details,
+            cause=cause,
+        )

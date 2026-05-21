@@ -25,6 +25,7 @@ from database.exceptions import (
     TransactionCommitError,
     TransactionError,
     TransactionRollbackError,
+    UnitOfWorkError,
 )
 from database.transactions import (
     ensure_transaction_closed,
@@ -37,6 +38,11 @@ from database.transactions import (
     safe_refresh,
     safe_rollback,
     transaction,
+)
+from database.unit_of_work import (
+    UnitOfWork,
+    UnitOfWorkFactory,
+    create_unit_of_work_factory,
 )
 
 __all__ = [
@@ -68,6 +74,7 @@ __all__ = [
     "TransactionCommitError",
     "TransactionError",
     "TransactionRollbackError",
+    "UnitOfWorkError",
     # Transactions
     "ensure_transaction_closed",
     "nested_transaction",
@@ -79,4 +86,8 @@ __all__ = [
     "safe_refresh",
     "safe_rollback",
     "transaction",
+    # UnitOfWork
+    "UnitOfWork",
+    "UnitOfWorkFactory",
+    "create_unit_of_work_factory",
 ]
