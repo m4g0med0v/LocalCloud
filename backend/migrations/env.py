@@ -1,33 +1,32 @@
 from __future__ import annotations
 
 import asyncio
-import sys
 from logging.config import fileConfig
-from pathlib import Path
 
 from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-ROOT_DIR = Path(__file__).resolve().parents[1]
-if str(ROOT_DIR) not in sys.path:
-    sys.path.insert(0, str(ROOT_DIR))
-
-from database.config import DatabaseSettings  # noqa: E402
-from database.metadata import get_metadata  # noqa: E402
+from core.config import get_settings
+from database.metadata import metadata
 
 config = context.config
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-target_metadata = get_metadata()
-config.set_main_option("sqlalchemy.url", DatabaseSettings().database_url)
+target_metadata = metadata
+
+
+def get_database_url() -> str:
+    settings = get_settings()
+    return settings.database.database_url
 
 
 def run_migrations_offline() -> None:
-    url = config.get_main_option("sqlalchemy.url")
+    url = get_database_url()
+
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -54,8 +53,11 @@ def do_run_migrations(connection: Connection) -> None:
 
 
 async def run_migrations_online() -> None:
+    configuration = config.get_section(config.config_ini_section, {})
+    configuration["sqlalchemy.url"] = get_database_url()
+
     connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section, {}),
+        configuration,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
