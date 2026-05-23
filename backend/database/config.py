@@ -49,13 +49,13 @@ class DatabaseSettings(BaseSettings):
     @property
     def database_url(self) -> str:
         """Сформировать SQLAlchemy URL для подключения к PostgreSQL."""
-        return str(
-            URL.create(
-                drivername=DTC.POSTGRES_DRIVER,
-                username=self.postgres_user,
-                password=self.postgres_password,
-                host=self.postgres_host,
-                port=self.postgres_port,
-                database=self.postgres_db,
-            )
+        return URL.create(
+            drivername=DTC.POSTGRES_DRIVER,
+            username=self.postgres_user,
+            password=self.postgres_password,
+            host=self.postgres_host,
+            port=self.postgres_port,
+            database=self.postgres_db,
+        ).render_as_string(
+            hide_password=False,
         )

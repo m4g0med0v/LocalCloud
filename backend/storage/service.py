@@ -36,6 +36,7 @@ from storage.presigned import (
 )
 from storage.types import (
     StorageChecksumAlgorithm,
+    StorageCopyResult,
     StorageDownloadResult,
     StorageIntegrityReport,
     StorageMultipartUpload,
@@ -556,7 +557,7 @@ class StorageService:
         source_bucket: str | None = None,
         destination_bucket: str | None = None,
         metadata: Mapping[str, Any] | StorageObjectMetadata | None = None,
-    ) -> StorageObjectInfo:
+    ) -> StorageCopyResult:
         """Копирует объект файла внутри S3-compatible хранилища.
 
         Args:
@@ -567,7 +568,7 @@ class StorageService:
             metadata: Metadata целевого объекта.
 
         Returns:
-            Информация о скопированном объекте.
+            Результат копирования объекта.
         """
 
         resolved_source_bucket = self._resolve_files_bucket(source_bucket)

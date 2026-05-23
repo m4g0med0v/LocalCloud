@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from datetime import datetime
+from datetime import UTC, datetime
 from io import BytesIO
 from typing import Any, BinaryIO
 
@@ -24,6 +24,7 @@ from storage.keys import normalize_object_key
 from storage.metadata import normalize_metadata
 from storage.types import (
     StorageChecksumAlgorithm,
+    StorageCopyResult,
     StorageDeleteResult,
     StorageDownloadResult,
     StorageObjectDeleteResult,
@@ -567,7 +568,7 @@ class StorageObjectManager:
         destination_bucket: str,
         destination_object_key: str,
         metadata: dict[str, Any] | StorageObjectMetadata | None = None,
-    ) -> StorageObjectInfo:
+    ) -> StorageCopyResult:
         """Копирует объект внутри хранилища.
 
         Если ``metadata`` переданы, metadata целевого объекта заменяются.
@@ -581,7 +582,7 @@ class StorageObjectManager:
             metadata: Новые metadata целевого объекта.
 
         Returns:
-            Информация о скопированном объекте.
+            Результат копирования объекта.
 
         Raises:
             StorageCopyError: Если копирование объекта не удалось.
@@ -632,9 +633,18 @@ class StorageObjectManager:
                 },
             ) from exc
 
-        return await self.stat_object(
+        copied_object = await self.stat_object(
             bucket=normalized_destination_bucket,
             object_key=normalized_destination_object_key,
+        )
+
+        return StorageCopyResult(
+            source_bucket=normalized_source_bucket,
+            source_object_key=normalized_source_object_key,
+            destination_bucket=normalized_destination_bucket,
+            destination_object_key=normalized_destination_object_key,
+            etag=copied_object.etag,
+            copied_at=datetime.now(UTC),
         )
 
     async def compose_object(

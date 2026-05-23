@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass, field
 from typing import Any
 
 from sqlalchemy import text
@@ -12,6 +13,26 @@ from database.exceptions import (
     DatabaseHealthCheckError,
     DatabaseTimeoutError,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class DatabaseHealthStatus:
+    """Типизированный результат проверки работоспособности PostgreSQL."""
+
+    component: str = "database"
+    status: str = "healthy"
+    connection: bool = True
+    latency_ms: float | None = None
+    latency_threshold_ms: float | None = None
+    error: str | None = None
+    message: str | None = None
+    details: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def is_success(self) -> bool:
+        """Проверяет, что база данных доступна и работает штатно."""
+
+        return self.status == "healthy" and self.connection
 
 
 async def check_database_connection() -> bool:
@@ -138,7 +159,7 @@ async def check_database_latency() -> float:
 async def check_database_health(
     *,
     latency_threshold_ms: float | None = 1000.0,
-) -> dict[str, Any]:
+) -> DatabaseHealthStatus:
     """Проверить общее состояние PostgreSQL.
 
     Проверяет:
@@ -151,7 +172,7 @@ async def check_database_health(
             Если значение равно ``None``, проверка порога не выполняется.
 
     Returns:
-        Словарь с информацией о состоянии базы данных.
+        DTO с информацией о состоянии базы данных.
 
     Example:
         >>> await check_database_health()
@@ -184,13 +205,12 @@ async def check_database_health(
                 },
             )
 
-        return {
-            "component": "database",
-            "status": "healthy",
-            "connection": connection_ok,
-            "latency_ms": latency_ms,
-            "latency_threshold_ms": latency_threshold_ms,
-        }
+        return DatabaseHealthStatus(
+            status="healthy",
+            connection=connection_ok,
+            latency_ms=latency_ms,
+            latency_threshold_ms=latency_threshold_ms,
+        )
 
     except DatabaseTimeoutError:
         raise
@@ -222,7 +242,7 @@ async def get_database_health_report(
     *,
     latency_threshold_ms: float | None = 1000.0,
     raise_on_error: bool = False,
-) -> dict[str, Any]:
+) -> DatabaseHealthStatus:
     """Вернуть health-отчёт базы данных.
 
     Метод удобен для общих health endpoint, где вместо проброса исключения
@@ -235,7 +255,7 @@ async def get_database_health_report(
             Если ``False``, ошибка преобразуется в словарь отчёта.
 
     Returns:
-        Словарь health-отчёта.
+        DTO health-отчёта.
     """
 
     try:
@@ -247,43 +267,40 @@ async def get_database_health_report(
         if raise_on_error:
             raise
 
-        return {
-            "component": "database",
-            "status": "degraded",
-            "connection": True,
-            "latency_ms": exc.details.get("latency_ms"),
-            "latency_threshold_ms": exc.details.get("latency_threshold_ms"),
-            "error": exc.__class__.__name__,
-            "message": exc.message,
-            "details": exc.details,
-        }
+        return DatabaseHealthStatus(
+            status="degraded",
+            connection=True,
+            latency_ms=exc.details.get("latency_ms"),
+            latency_threshold_ms=exc.details.get("latency_threshold_ms"),
+            error=exc.__class__.__name__,
+            message=exc.message,
+            details=exc.details,
+        )
 
     except DatabaseHealthCheckError as exc:
         if raise_on_error:
             raise
 
-        return {
-            "component": "database",
-            "status": "unavailable",
-            "connection": False,
-            "latency_ms": None,
-            "latency_threshold_ms": latency_threshold_ms,
-            "error": exc.__class__.__name__,
-            "message": exc.message,
-            "details": exc.details,
-        }
+        return DatabaseHealthStatus(
+            status="unavailable",
+            connection=False,
+            latency_ms=None,
+            latency_threshold_ms=latency_threshold_ms,
+            error=exc.__class__.__name__,
+            message=exc.message,
+            details=exc.details,
+        )
 
     except DatabaseConnectionError as exc:
         if raise_on_error:
             raise
 
-        return {
-            "component": "database",
-            "status": "unavailable",
-            "connection": False,
-            "latency_ms": None,
-            "latency_threshold_ms": latency_threshold_ms,
-            "error": exc.__class__.__name__,
-            "message": exc.message,
-            "details": exc.details,
-        }
+        return DatabaseHealthStatus(
+            status="unavailable",
+            connection=False,
+            latency_ms=None,
+            latency_threshold_ms=latency_threshold_ms,
+            error=exc.__class__.__name__,
+            message=exc.message,
+            details=exc.details,
+        )

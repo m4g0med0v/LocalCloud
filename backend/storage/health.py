@@ -430,8 +430,8 @@ class StorageHealthChecker:
         latency_threshold_ms: float | None = None,
         check_read_write: bool = True,
         raise_on_error: bool = False,
-    ) -> dict[str, Any]:
-        """Возвращает health report объектного хранилища в виде словаря.
+    ) -> StorageHealthStatus:
+        """Возвращает health report объектного хранилища в виде DTO.
 
         Args:
             bucket: Имя bucket для проверки.
@@ -441,7 +441,7 @@ class StorageHealthChecker:
                 отчёта.
 
         Returns:
-            Словарь с результатами health-check.
+            DTO с результатами health-check.
         """
 
         resolved_latency_threshold_ms = (
@@ -451,85 +451,73 @@ class StorageHealthChecker:
         )
 
         try:
-            status = await self.check_storage_health(
+            return await self.check_storage_health(
                 bucket=bucket,
                 latency_threshold_ms=resolved_latency_threshold_ms,
                 check_read_write=check_read_write,
             )
 
-            return {
-                "component": "storage",
-                "status": status.state.value,
-                "connection": status.connection_ok,
-                "bucket": bucket,
-                "bucket_access": status.bucket_access_ok,
-                "read_write": status.read_write_ok,
-                "latency_ms": status.latency_ms,
-                "latency_threshold_ms": status.latency_threshold_ms,
-                "checked_at": status.checked_at.isoformat(),
-                "details": status.details,
-            }
-
         except StorageHealthCheckError as exc:
             if raise_on_error:
                 raise
 
-            return {
-                "component": "storage",
-                "status": StorageHealthState.UNHEALTHY.value,
-                "connection": False,
-                "bucket": bucket,
-                "bucket_access": None,
-                "read_write": None,
-                "latency_ms": None,
-                "latency_threshold_ms": resolved_latency_threshold_ms,
-                "checked_at": datetime.now(UTC).isoformat(),
-                "error": exc.__class__.__name__,
-                "message": exc.message,
-                "details": exc.details,
-            }
+            return StorageHealthStatus(
+                state=StorageHealthState.UNHEALTHY,
+                checked_at=datetime.now(UTC),
+                connection_ok=False,
+                bucket_access_ok=None,
+                read_write_ok=None,
+                latency_ms=None,
+                latency_threshold_ms=resolved_latency_threshold_ms,
+                details={
+                    "bucket": bucket,
+                    "error": exc.__class__.__name__,
+                    "message": exc.message,
+                    **exc.details,
+                },
+            )
 
         except StorageError as exc:
             if raise_on_error:
                 raise
 
-            return {
-                "component": "storage",
-                "status": StorageHealthState.UNHEALTHY.value,
-                "connection": False,
-                "bucket": bucket,
-                "bucket_access": None,
-                "read_write": None,
-                "latency_ms": None,
-                "latency_threshold_ms": resolved_latency_threshold_ms,
-                "checked_at": datetime.now(UTC).isoformat(),
-                "error": exc.__class__.__name__,
-                "message": exc.message,
-                "details": exc.details,
-            }
+            return StorageHealthStatus(
+                state=StorageHealthState.UNHEALTHY,
+                checked_at=datetime.now(UTC),
+                connection_ok=False,
+                bucket_access_ok=None,
+                read_write_ok=None,
+                latency_ms=None,
+                latency_threshold_ms=resolved_latency_threshold_ms,
+                details={
+                    "bucket": bucket,
+                    "error": exc.__class__.__name__,
+                    "message": exc.message,
+                    **exc.details,
+                },
+            )
 
         except Exception as exc:
             if raise_on_error:
                 raise
 
-            return {
-                "component": "storage",
-                "status": StorageHealthState.UNHEALTHY.value,
-                "connection": False,
-                "bucket": bucket,
-                "bucket_access": None,
-                "read_write": None,
-                "latency_ms": None,
-                "latency_threshold_ms": resolved_latency_threshold_ms,
-                "checked_at": datetime.now(UTC).isoformat(),
-                "error": exc.__class__.__name__,
-                "message": str(exc),
-                "details": {
+            return StorageHealthStatus(
+                state=StorageHealthState.UNHEALTHY,
+                checked_at=datetime.now(UTC),
+                connection_ok=False,
+                bucket_access_ok=None,
+                read_write_ok=None,
+                latency_ms=None,
+                latency_threshold_ms=resolved_latency_threshold_ms,
+                details={
+                    "bucket": bucket,
+                    "error": exc.__class__.__name__,
+                    "message": str(exc),
                     "operation": "get_storage_health_report",
                     "reason": str(exc),
                     "error_type": exc.__class__.__name__,
                 },
-            }
+            )
 
     def build_healthcheck_object_key(self) -> str:
         """Создаёт ключ тестового health-check объекта.

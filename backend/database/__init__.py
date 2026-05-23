@@ -29,6 +29,7 @@ from database.exceptions import (
     UnitOfWorkError,
 )
 from database.health import (
+    DatabaseHealthStatus,
     check_database_connection,
     check_database_health,
     check_database_latency,
@@ -84,6 +85,7 @@ __all__ = [
     "UnitOfWorkError",
     "DatabaseHealthCheckError",
     # Health
+    "DatabaseHealthStatus",
     "check_database_connection",
     "check_database_health",
     "check_database_latency",
