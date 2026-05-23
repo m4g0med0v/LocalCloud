@@ -5,6 +5,7 @@ description = "Веб-приложение для персонального х�
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "alembic>=1.17.2",
     "asyncpg>=0.31.0",
     "minio>=7.2.20",
     "pydantic>=2.13.4",

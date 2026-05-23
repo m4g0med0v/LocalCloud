@@ -76,7 +76,7 @@ def init_db_client(settings: DatabaseSettings) -> None:
             autocommit=False,
         )
 
-    except SQLAlchemyError as exc:
+    except (ImportError, SQLAlchemyError) as exc:
         async_engine = None
         async_session_factory = None
 
@@ -85,7 +85,10 @@ def init_db_client(settings: DatabaseSettings) -> None:
             database=settings.postgres_db,
             host=settings.postgres_host,
             port=settings.postgres_port,
-            details={"reason": str(exc)},
+            details={
+                "reason": str(exc),
+                "error_type": exc.__class__.__name__,
+            },
             cause=exc,
         ) from exc
 

@@ -168,6 +168,7 @@ class User(Base, TimestampMixin):
     assigned_user_roles: Mapped[list[UserRole]] = relationship(
         "UserRole",
         foreign_keys="UserRole.assigned_by",
+        back_populates="assigner",
         lazy="selectin",
     )
 

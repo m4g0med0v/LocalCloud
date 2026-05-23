@@ -264,6 +264,7 @@ class UserRole(Base):
     assigner: Mapped[User | None] = relationship(
         "User",
         foreign_keys=[assigned_by],
+        back_populates="assigned_user_roles",
         lazy="selectin",
     )
 

@@ -1,0 +1,10 @@
+Alembic migrations for LocalCloud.
+
+Common commands from the backend directory:
+
+    alembic upgrade head
+    alembic downgrade -1
+    alembic revision --autogenerate -m "message"
+
+The initial migration creates the schema from database.metadata so the first
+database bootstrap stays aligned with the implemented ORM models.
