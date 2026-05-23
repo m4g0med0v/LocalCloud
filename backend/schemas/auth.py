@@ -10,7 +10,16 @@ from schemas.users import CurrentUserRead
 
 
 class LoginRequest(BaseSchema):
-    """Запрос на вход в систему."""
+    """Запрос на вход в систему.
+
+    Используется для аутентификации пользователя по email или username и паролю.
+    Значение ``email_or_username`` нормализуется: пробелы по краям удаляются,
+    пустая строка отклоняется.
+
+    Attributes:
+        email_or_username: Email или username пользователя.
+        password: Пароль пользователя.
+    """
 
     email_or_username: str = Field(
         ...,
@@ -29,6 +38,18 @@ class LoginRequest(BaseSchema):
     @field_validator("email_or_username")
     @classmethod
     def normalize_email_or_username(cls, value: str) -> str:
+        """Нормализует email или username пользователя.
+
+        Args:
+            value: Исходное значение email или username.
+
+        Returns:
+            Строка без пробелов по краям.
+
+        Raises:
+            ValueError: Если после удаления пробелов значение становится пустым.
+        """
+
         normalized_value = value.strip()
 
         if not normalized_value:
@@ -39,6 +60,18 @@ class LoginRequest(BaseSchema):
     @field_validator("password")
     @classmethod
     def validate_password(cls, value: str) -> str:
+        """Проверяет, что пароль не пустой.
+
+        Args:
+            value: Значение пароля.
+
+        Returns:
+            Исходное значение пароля.
+
+        Raises:
+            ValueError: Если пароль пустой.
+        """
+
         if not value:
             raise ValueError("password не должен быть пустым.")
 
@@ -46,7 +79,17 @@ class LoginRequest(BaseSchema):
 
 
 class LoginResponse(BaseSchema):
-    """Ответ после успешной аутентификации."""
+    """Ответ после успешной аутентификации.
+
+    Возвращается после успешного входа пользователя в систему. Содержит
+    признак аутентификации, данные текущего пользователя и сообщение о
+    результате операции.
+
+    Attributes:
+        authenticated: Признак успешной аутентификации.
+        user: Текущий аутентифицированный пользователь.
+        message: Сообщение о результате входа.
+    """
 
     authenticated: bool = Field(
         default=True,
@@ -63,7 +106,16 @@ class LoginResponse(BaseSchema):
 
 
 class LogoutResponse(BaseSchema):
-    """Ответ после выхода из системы."""
+    """Ответ после выхода из системы.
+
+    Возвращается после завершения пользовательской сессии или удаления
+    аутентификационных cookies.
+
+    Attributes:
+        authenticated: Признак того, что пользователь остаётся
+            аутентифицированным после операции.
+        message: Сообщение о результате выхода.
+    """
 
     authenticated: bool = Field(
         default=False,
@@ -76,7 +128,17 @@ class LogoutResponse(BaseSchema):
 
 
 class RefreshTokenResponse(BaseSchema):
-    """Ответ после обновления access/refresh token."""
+    """Ответ после обновления access/refresh token.
+
+    Возвращается после успешного обновления сессии. В зависимости от реализации
+    сервиса может включать данные текущего пользователя.
+
+    Attributes:
+        authenticated: Признак успешного обновления сессии.
+        user: Текущий пользователь, если сервис возвращает его вместе с
+            обновлением токенов.
+        message: Сообщение о результате обновления сессии.
+    """
 
     authenticated: bool = Field(
         default=True,
@@ -93,12 +155,18 @@ class RefreshTokenResponse(BaseSchema):
 
 
 class TokenPair(BaseSchema):
-    """
-    Пара access/refresh token.
+    """Пара access/refresh token.
 
-    Обычно не возвращается клиенту напрямую, потому что токены передаются
-    через httpOnly cookies. Схема может использоваться во внутренних тестах
-    или сервисных контрактах.
+    Обычно не возвращается клиенту напрямую, потому что токены передаются через
+    httpOnly cookies. Схема может использоваться во внутренних тестах или
+    сервисных контрактах.
+
+    Attributes:
+        access_token: JWT access token.
+        refresh_token: JWT refresh token.
+        token_type: Тип токена.
+        access_expires_at: Дата и время истечения access token.
+        refresh_expires_at: Дата и время истечения refresh token.
     """
 
     access_token: str = Field(
@@ -127,7 +195,22 @@ class TokenPair(BaseSchema):
 
 
 class JwtPayloadRead(BaseSchema):
-    """Безопасное представление полезной нагрузки JWT."""
+    """Безопасное представление полезной нагрузки JWT.
+
+    Используется для передачи наружу только тех claims, которые можно безопасно
+    отображать или использовать в диагностике.
+
+    Attributes:
+        sub: Subject токена. Обычно содержит идентификатор пользователя.
+        user_id: Идентификатор пользователя, если он был извлечён из subject
+            или claims.
+        token_type: Тип JWT.
+        jti: Уникальный идентификатор JWT.
+        iss: Issuer токена.
+        aud: Audience токена.
+        issued_at: Дата и время выпуска токена.
+        expires_at: Дата и время истечения токена.
+    """
 
     sub: str = Field(
         ...,
@@ -167,7 +250,28 @@ class JwtPayloadRead(BaseSchema):
 
 
 class AuthSessionRead(BaseSchema):
-    """Безопасное представление пользовательской refresh-сессии."""
+    """Безопасное представление пользовательской refresh-сессии.
+
+    Используется для отображения информации о сессиях пользователя без
+    раскрытия значения refresh token.
+
+    Attributes:
+        id: Уникальный идентификатор сессии или refresh-токена.
+        user_id: Идентификатор пользователя, которому принадлежит сессия.
+        status: Статус сессии.
+        expires_at: Дата и время истечения refresh-сессии.
+        revoked_at: Дата и время отзыва сессии.
+        revoke_reason: Причина отзыва сессии.
+        replaced_by_token_id: Идентификатор новой сессии, заменившей текущую
+            при ротации.
+        parent_token_id: Идентификатор предыдущей сессии, из которой была
+            создана текущая.
+        ip_address: IP-адрес, с которого была создана сессия.
+        user_agent: User-Agent клиента.
+        device_name: Условное имя устройства или клиента.
+        is_active: Признак активности сессии.
+        created_at: Дата и время создания сессии.
+    """
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
@@ -227,7 +331,15 @@ class AuthSessionRead(BaseSchema):
 
 
 class PasswordChangeRequest(BaseSchema):
-    """Запрос на изменение пароля текущего пользователя."""
+    """Запрос на изменение пароля текущего пользователя.
+
+    Используется аутентифицированным пользователем для смены текущего пароля на
+    новый. Оба поля должны быть непустыми.
+
+    Attributes:
+        current_password: Текущий пароль пользователя.
+        new_password: Новый пароль пользователя.
+    """
 
     current_password: str = Field(
         ...,
@@ -245,6 +357,18 @@ class PasswordChangeRequest(BaseSchema):
     @field_validator("current_password")
     @classmethod
     def validate_current_password(cls, value: str) -> str:
+        """Проверяет, что текущий пароль не пустой.
+
+        Args:
+            value: Значение текущего пароля.
+
+        Returns:
+            Исходное значение текущего пароля.
+
+        Raises:
+            ValueError: Если текущий пароль пустой.
+        """
+
         if not value:
             raise ValueError("current_password не должен быть пустым.")
 
@@ -253,6 +377,18 @@ class PasswordChangeRequest(BaseSchema):
     @field_validator("new_password")
     @classmethod
     def validate_new_password(cls, value: str) -> str:
+        """Проверяет, что новый пароль не пустой.
+
+        Args:
+            value: Значение нового пароля.
+
+        Returns:
+            Исходное значение нового пароля.
+
+        Raises:
+            ValueError: Если новый пароль пустой.
+        """
+
         if not value:
             raise ValueError("new_password не должен быть пустым.")
 
@@ -260,7 +396,15 @@ class PasswordChangeRequest(BaseSchema):
 
 
 class PasswordResetRequest(BaseSchema):
-    """Запрос на начало восстановления пароля."""
+    """Запрос на начало восстановления пароля.
+
+    Используется для запуска сценария восстановления пароля по email
+    пользователя.
+
+    Attributes:
+        email: Email пользователя, для которого нужно начать восстановление
+            пароля.
+    """
 
     email: EmailStr = Field(
         ...,
@@ -270,7 +414,15 @@ class PasswordResetRequest(BaseSchema):
 
 
 class PasswordResetConfirmRequest(BaseSchema):
-    """Запрос на подтверждение восстановления пароля."""
+    """Запрос на подтверждение восстановления пароля.
+
+    Используется для установки нового пароля по токену подтверждения
+    восстановления.
+
+    Attributes:
+        token: Токен подтверждения восстановления пароля.
+        new_password: Новый пароль пользователя.
+    """
 
     token: str = Field(
         ...,
@@ -288,6 +440,18 @@ class PasswordResetConfirmRequest(BaseSchema):
     @field_validator("token")
     @classmethod
     def validate_token(cls, value: str) -> str:
+        """Нормализует и проверяет токен восстановления пароля.
+
+        Args:
+            value: Исходное значение токена восстановления.
+
+        Returns:
+            Токен без пробелов по краям.
+
+        Raises:
+            ValueError: Если после удаления пробелов токен становится пустым.
+        """
+
         normalized_value = value.strip()
 
         if not normalized_value:
@@ -298,6 +462,18 @@ class PasswordResetConfirmRequest(BaseSchema):
     @field_validator("new_password")
     @classmethod
     def validate_new_password(cls, value: str) -> str:
+        """Проверяет, что новый пароль не пустой.
+
+        Args:
+            value: Значение нового пароля.
+
+        Returns:
+            Исходное значение нового пароля.
+
+        Raises:
+            ValueError: Если новый пароль пустой.
+        """
+
         if not value:
             raise ValueError("new_password не должен быть пустым.")
 
