@@ -109,7 +109,7 @@ class NodePermissionsRepository(BaseRepository[NodePermission]):
             .options(
                 selectinload(NodePermission.node),
                 selectinload(NodePermission.user),
-                selectinload(NodePermission.granted_by),
+                selectinload(NodePermission.grantor),
             )
         )
 
@@ -190,7 +190,7 @@ class NodePermissionsRepository(BaseRepository[NodePermission]):
             .options(
                 selectinload(NodePermission.node),
                 selectinload(NodePermission.user),
-                selectinload(NodePermission.granted_by),
+                selectinload(NodePermission.grantor),
             )
         )
 
@@ -841,7 +841,7 @@ class NodePermissionsRepository(BaseRepository[NodePermission]):
             .where(NodePermission.node_id == node_id)
             .options(
                 selectinload(NodePermission.user),
-                selectinload(NodePermission.granted_by),
+                selectinload(NodePermission.grantor),
             )
         )
 
@@ -892,7 +892,7 @@ class NodePermissionsRepository(BaseRepository[NodePermission]):
             .where(NodePermission.user_id == user_id)
             .options(
                 selectinload(NodePermission.node),
-                selectinload(NodePermission.granted_by),
+                selectinload(NodePermission.grantor),
             )
         )
 
