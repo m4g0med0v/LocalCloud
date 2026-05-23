@@ -9,6 +9,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from core.constants import ApplicationConstants as APC
 from core.constants import LoggingConstants as LGC
 from core.constants import LoggingLevels
+from database.config import DatabaseSettings
+from storage.config import StorageSettings
 
 
 class ApplicationSettings(BaseSettings):
@@ -64,6 +66,8 @@ class Settings(BaseModel):
 
     app: ApplicationSettings = Field(default_factory=ApplicationSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
+    databse: DatabaseSettings = Field(default_factory=DatabaseSettings)
+    storage: StorageSettings = Field(default_factory=StorageSettings)
 
 
 @lru_cache(maxsize=1)
