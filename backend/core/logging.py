@@ -7,10 +7,12 @@ import sys
 from collections.abc import Iterable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from core.config import LoggingSettings
 from core.constants import LoggingConstants
+
+if TYPE_CHECKING:
+    from core.config import LoggingSettings
 
 
 class JsonFormatter(logging.Formatter):

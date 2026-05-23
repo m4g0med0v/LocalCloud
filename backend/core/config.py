@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import cast
 
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -21,6 +22,7 @@ class ApplicationSettings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        populate_by_name=True,
     )
 
     app_name: str = Field(default=APC.APP_NAME, alias="APP_NAME")
@@ -47,6 +49,7 @@ class LoggingSettings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        populate_by_name=True,
     )
 
     log_level: LoggingLevels = Field(
@@ -60,13 +63,21 @@ class LoggingSettings(BaseSettings):
     )
     log_file_path: Path = Field(default=LGC.LOG_FILE_PATH, alias="LOG_FILE_PATH")
 
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def normalize_log_level(cls, value: object) -> object:
+        """Normalize log level names from environment variables."""
+        if isinstance(value, str):
+            return value.upper()
+        return value
+
 
 class Settings(BaseModel):
     """Общие настройки приложения."""
 
     app: ApplicationSettings = Field(default_factory=ApplicationSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
-    databse: DatabaseSettings = Field(default_factory=DatabaseSettings)
+    database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     storage: StorageSettings = Field(default_factory=StorageSettings)
 
 
@@ -76,4 +87,14 @@ def get_settings() -> Settings:
     return Settings()
 
 
-settings = get_settings()
+class _SettingsProxy:
+    """Lazy proxy that keeps ``from core import settings`` import-safe."""
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(get_settings(), name)
+
+    def __repr__(self) -> str:
+        return repr(get_settings())
+
+
+settings = cast(Settings, _SettingsProxy())
