@@ -3,15 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import (
-    AnyHttpUrl,
-    ConfigDict,
-    Field,
-    ValidationInfo,
-    computed_field,
-    field_validator,
-    model_validator,
-)
+from pydantic import ConfigDict, Field, ValidationInfo, computed_field, field_validator, model_validator
 
 from database.models.enums import PublicLinkPermissionType, PublicLinkStatus
 from schemas.common import BaseSchema, PaginationParams
@@ -313,6 +305,8 @@ class PublicLinkListItem(BaseSchema):
 class PublicLinkPublicRead(BaseSchema):
     """Публичное представление ссылки без внутренних и владельческих данных."""
 
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
     id: UUID = Field(
         ...,
         description="Уникальный идентификатор публичной ссылки.",
@@ -400,7 +394,7 @@ class PublicLinkAccessResponse(BaseSchema):
 class PublicLinkDownloadResponse(BaseSchema):
     """Ответ со ссылкой на скачивание через публичную ссылку."""
 
-    presigned_url: AnyHttpUrl | str = Field(
+    presigned_url: str = Field(
         ...,
         description="Предварительно подписанная ссылка на скачивание.",
     )

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import AnyHttpUrl, ConfigDict, Field, field_validator
+from pydantic import ConfigDict, Field, field_validator
 
 from database.models.enums import (
     FilePreviewStatus,
@@ -317,7 +317,7 @@ class FileDownloadRequest(BaseSchema):
 class FileDownloadResponse(BaseSchema):
     """Ответ со ссылкой на скачивание файла."""
 
-    presigned_url: AnyHttpUrl | str = Field(
+    presigned_url: str = Field(
         ...,
         description="Предварительно подписанная ссылка на скачивание файла.",
     )
@@ -383,7 +383,7 @@ class FilePreviewRead(BaseSchema):
         default=False,
         description="Доступен ли предпросмотр файла.",
     )
-    presigned_url: AnyHttpUrl | str | None = Field(
+    presigned_url: str | None = Field(
         default=None,
         description="Предварительно подписанная ссылка на предпросмотр, если он доступен.",
     )

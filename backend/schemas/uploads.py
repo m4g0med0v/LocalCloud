@@ -3,14 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import (
-    AnyHttpUrl,
-    ConfigDict,
-    Field,
-    ValidationInfo,
-    computed_field,
-    field_validator,
-)
+from pydantic import ConfigDict, Field, ValidationInfo, computed_field, field_validator
 
 from database.models.enums import UploadPartStatus, UploadSessionStatus
 from schemas.common import BaseSchema, PaginationParams
@@ -343,7 +336,7 @@ class UploadPartPresignedUrlRead(BaseSchema):
         ge=1,
         description="Номер части multipart upload.",
     )
-    url: AnyHttpUrl | str = Field(
+    url: str = Field(
         ...,
         description="Предварительно подписанная ссылка для загрузки части.",
     )
