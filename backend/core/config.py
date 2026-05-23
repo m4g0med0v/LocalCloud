@@ -8,8 +8,10 @@ from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from core.constants import ApplicationConstants as APC
+from core.constants import CookieConstants as CKC
 from core.constants import LoggingConstants as LGC
 from core.constants import LoggingLevels
+from core.constants import SecurityConstants as SCC
 from database.config import DatabaseSettings
 from storage.config import StorageSettings
 
@@ -72,11 +74,74 @@ class LoggingSettings(BaseSettings):
         return value
 
 
+class SecuritySettings(BaseSettings):
+    """Настройки безопасности и JWT."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+        populate_by_name=True,
+    )
+
+    secret_key: str = Field(default=SCC.SECRET_KEY, alias="SECRET_KEY")
+    jwt_algorithm: str = Field(default=SCC.JWT_ALGORITHM, alias="JWT_ALGORITHM")
+    jwt_issuer: str = Field(default=SCC.JWT_ISSUER, alias="JWT_ISSUER")
+    jwt_audience: str = Field(default=SCC.JWT_AUDIENCE, alias="JWT_AUDIENCE")
+    access_token_expire_minutes: int = Field(
+        default=SCC.ACCESS_TOKEN_EXPIRE_MINUTES,
+        alias="ACCESS_TOKEN_EXPIRE_MINUTES",
+    )
+    refresh_token_expire_days: int = Field(
+        default=SCC.REFRESH_TOKEN_EXPIRE_DAYS,
+        alias="REFRESH_TOKEN_EXPIRE_DAYS",
+    )
+    password_hash_scheme: str = Field(
+        default=SCC.PASSWORD_HASH_SCHEME,
+        alias="PASSWORD_HASH_SCHEME",
+    )
+
+
+class CookieSettings(BaseSettings):
+    """Настройки auth cookie."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+        populate_by_name=True,
+    )
+
+    access_cookie_name: str = Field(
+        default=CKC.ACCESS_COOKIE_NAME,
+        alias="ACCESS_COOKIE_NAME",
+    )
+    refresh_cookie_name: str = Field(
+        default=CKC.REFRESH_COOKIE_NAME,
+        alias="REFRESH_COOKIE_NAME",
+    )
+    cookie_secure: bool = Field(default=CKC.COOKIE_SECURE, alias="COOKIE_SECURE")
+    cookie_httponly: bool = Field(
+        default=CKC.COOKIE_HTTPONLY,
+        alias="COOKIE_HTTPONLY",
+    )
+    cookie_samesite: str = Field(default=CKC.COOKIE_SAMESITE, alias="COOKIE_SAMESITE")
+    cookie_domain: str | None = Field(
+        default=CKC.COOKIE_DOMAIN,
+        alias="COOKIE_DOMAIN",
+    )
+    cookie_path: str = Field(default=CKC.COOKIE_PATH, alias="COOKIE_PATH")
+
+
 class Settings(BaseModel):
     """Общие настройки приложения."""
 
     app: ApplicationSettings = Field(default_factory=ApplicationSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
+    security: SecuritySettings = Field(default_factory=SecuritySettings)
+    cookies: CookieSettings = Field(default_factory=CookieSettings)
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     storage: StorageSettings = Field(default_factory=StorageSettings)
 
