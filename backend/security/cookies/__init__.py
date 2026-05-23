@@ -32,8 +32,8 @@ from security.cookies.validators import (
 
 __all__ = [
     "CookieSameSite",
-    "AuthCookieName",
     "CookieErrorCode",
+    "AuthCookieName",
     "CookieError",
     "CookieOptions",
     "AuthCookieNames",

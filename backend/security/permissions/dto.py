@@ -11,6 +11,20 @@ from security.permissions.exceptions import PermissionDeniedError
 
 @dataclass(frozen=True, slots=True)
 class PermissionCheckResult:
+    """Результат проверки прав доступа к объекту файловой системы.
+
+    Attributes:
+        allowed: True, если доступ разрешён, иначе False.
+        action: Действие, для которого выполнялась проверка прав.
+        reason: Причина отказа в доступе, если доступ запрещён.
+        user_id: Идентификатор пользователя, для которого выполнялась проверка.
+        node_id: Идентификатор объекта файловой системы.
+        permission_level: Уровень прав доступа пользователя к объекту.
+        is_admin: True, если пользователь имеет права администратора.
+        is_owner: True, если пользователь является владельцем объекта.
+        details: Дополнительные диагностические данные проверки.
+    """
+
     allowed: bool
     action: PermissionAction
     reason: PermissionDeniedReason | None = None
@@ -23,11 +37,24 @@ class PermissionCheckResult:
 
     @property
     def denied(self) -> bool:
+        """Проверяет, был ли доступ запрещён.
+
+        Returns:
+            True, если доступ запрещён, иначе False.
+        """
+
         return not self.allowed
 
     def raise_if_denied(self) -> None:
+        """Выбрасывает исключение, если доступ запрещён.
+
+        Raises:
+            PermissionDeniedError: Если результат проверки запрещает доступ.
+        """
+
         if self.allowed:
             return
+
         raise PermissionDeniedError(
             action=self.action,
             reason=self.reason,
@@ -35,6 +62,3 @@ class PermissionCheckResult:
             node_id=self.node_id,
             details=self.details,
         )
-
-
-__all__ = ["PermissionCheckResult"]

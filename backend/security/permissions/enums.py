@@ -4,6 +4,20 @@ from enum import StrEnum
 
 
 class PermissionAction(StrEnum):
+    """Действия, для которых проверяются права доступа.
+
+    Attributes:
+        READ: Чтение metadata или содержимого объекта.
+        DOWNLOAD: Скачивание файла.
+        WRITE: Изменение или запись данных.
+        DELETE: Удаление объекта.
+        SHARE: Выдача доступа другим пользователям.
+        OWNER: Проверка владения объектом.
+        MANAGE: Управление объектом и его настройками.
+        RESTORE: Восстановление объекта из корзины.
+        PURGE: Безвозвратное удаление объекта.
+    """
+
     READ = "read"
     DOWNLOAD = "download"
     WRITE = "write"
@@ -16,6 +30,22 @@ class PermissionAction(StrEnum):
 
 
 class PermissionDeniedReason(StrEnum):
+    """Причины отказа в доступе.
+
+    Attributes:
+        ANONYMOUS_USER: Пользователь не авторизован.
+        INACTIVE_USER: Пользователь неактивен или заблокирован.
+        DELETED_NODE: Объект файловой системы удалён.
+        NOT_OWNER: Пользователь не является владельцем объекта.
+        NOT_ADMIN: Пользователь не имеет прав администратора.
+        PERMISSION_NOT_FOUND: Подходящее разрешение не найдено.
+        PERMISSION_REVOKED: Разрешение было отозвано.
+        PERMISSION_EXPIRED: Срок действия разрешения истёк.
+        INSUFFICIENT_PERMISSION: Уровень разрешения недостаточен.
+        PRIVATE_NODE: Объект закрыт для публичного доступа.
+        INVALID_ACTION: Передано недопустимое действие.
+    """
+
     ANONYMOUS_USER = "anonymous_user"
     INACTIVE_USER = "inactive_user"
     DELETED_NODE = "deleted_node"
@@ -30,15 +60,18 @@ class PermissionDeniedReason(StrEnum):
 
 
 class PermissionErrorCode(StrEnum):
+    """Коды ошибок системы прав доступа.
+
+    Attributes:
+        PERMISSION_DENIED: Доступ запрещён.
+        INVALID_ACTION: Передано некорректное действие.
+        INVALID_PERMISSION_LEVEL: Передан некорректный уровень прав.
+        INVALID_USER: Пользователь отсутствует или некорректен.
+        INVALID_NODE: Объект файловой системы отсутствует или некорректен.
+    """
+
     PERMISSION_DENIED = "permission_denied"
     INVALID_ACTION = "invalid_action"
     INVALID_PERMISSION_LEVEL = "invalid_permission_level"
     INVALID_USER = "invalid_user"
     INVALID_NODE = "invalid_node"
-
-
-__all__ = [
-    "PermissionAction",
-    "PermissionDeniedReason",
-    "PermissionErrorCode",
-]

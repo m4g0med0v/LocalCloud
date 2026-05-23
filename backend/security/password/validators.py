@@ -10,11 +10,27 @@ from security.password.enums import (
 )
 
 
-def normalize_password_hash_scheme(scheme: str | PasswordHashScheme) -> PasswordHashScheme:
+def normalize_password_hash_scheme(
+    scheme: str | PasswordHashScheme,
+) -> PasswordHashScheme:
+    """Нормализует и проверяет алгоритм хеширования пароля.
+
+    Args:
+        scheme: Название алгоритма хеширования пароля.
+
+    Returns:
+        Нормализованное название поддерживаемого алгоритма хеширования.
+
+    Raises:
+        ValueError: Если алгоритм не является строкой или не входит в список
+            поддерживаемых алгоритмов.
+    """
+
     if not isinstance(scheme, str):
         raise ValueError("Алгоритм хеширования пароля должен быть строкой.")
 
     normalized_scheme = scheme.strip().lower()
+
     if normalized_scheme not in SUPPORTED_PASSWORD_HASH_SCHEMES:
         raise ValueError(
             "Неподдерживаемый алгоритм хеширования паролей. "
@@ -25,10 +41,24 @@ def normalize_password_hash_scheme(scheme: str | PasswordHashScheme) -> Password
 
 
 def validate_password_value(password: str) -> str:
+    """Проверяет значение пароля.
+
+    Args:
+        password: Пароль для проверки.
+
+    Returns:
+        Исходный пароль, если он прошёл базовую проверку.
+
+    Raises:
+        ValueError: Если пароль не является строкой или является пустым.
+    """
+
     if not isinstance(password, str):
         raise ValueError("Пароль должен быть строкой.")
+
     if not password:
         raise ValueError("Пароль не должен быть пустым.")
+
     return password
 
 
@@ -42,6 +72,22 @@ def validate_password_strength(
     require_special: bool = False,
     allow_whitespace: bool = False,
 ) -> PasswordValidationResult:
+    """Проверяет сложность пароля.
+
+    Args:
+        password: Пароль для проверки.
+        min_length: Минимально допустимая длина пароля.
+        max_length: Максимально допустимая длина пароля.
+        require_letter: Требовать ли наличие хотя бы одной буквы.
+        require_digit: Требовать ли наличие хотя бы одной цифры.
+        require_special: Требовать ли наличие хотя бы одного специального
+            символа.
+        allow_whitespace: Разрешать ли пробельные символы в пароле.
+
+    Returns:
+        Результат валидации пароля со списком найденных ошибок.
+    """
+
     errors: list[PasswordValidationError] = []
 
     if not isinstance(password, str) or not password:
@@ -118,6 +164,25 @@ def require_strong_password(
     require_special: bool = False,
     allow_whitespace: bool = False,
 ) -> str:
+    """Проверяет пароль и выбрасывает исключение, если он недостаточно сложный.
+
+    Args:
+        password: Пароль для проверки.
+        min_length: Минимально допустимая длина пароля.
+        max_length: Максимально допустимая длина пароля.
+        require_letter: Требовать ли наличие хотя бы одной буквы.
+        require_digit: Требовать ли наличие хотя бы одной цифры.
+        require_special: Требовать ли наличие хотя бы одного специального
+            символа.
+        allow_whitespace: Разрешать ли пробельные символы в пароле.
+
+    Returns:
+        Исходный пароль, если он прошёл проверку сложности.
+
+    Raises:
+        ValueError: Если пароль не прошёл проверку сложности.
+    """
+
     result = validate_password_strength(
         password,
         min_length=min_length,
@@ -127,14 +192,8 @@ def require_strong_password(
         require_special=require_special,
         allow_whitespace=allow_whitespace,
     )
+
     if not result.is_valid:
         raise ValueError("; ".join(result.messages))
+
     return password
-
-
-__all__ = [
-    "normalize_password_hash_scheme",
-    "validate_password_value",
-    "validate_password_strength",
-    "require_strong_password",
-]
