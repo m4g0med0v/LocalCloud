@@ -10,7 +10,20 @@ from schemas.common import BaseSchema
 
 
 def normalize_health_status(value: HealthStatus | str) -> HealthStatus:
-    """Нормализует внутренние health-статусы к публичному HealthStatus."""
+    """Нормализует внутренние health-статусы к публичному HealthStatus.
+
+    Поддерживает как уже готовые значения ``HealthStatus``, так и строковые
+    внутренние статусы, которые используются в разных сервисных слоях.
+
+    Args:
+        value: Исходный статус работоспособности.
+
+    Returns:
+        Нормализованный публичный статус ``HealthStatus``.
+
+    Raises:
+        ValueError: Если переданный статус не поддерживается.
+    """
 
     if isinstance(value, HealthStatus):
         return value
@@ -33,7 +46,24 @@ def normalize_health_status(value: HealthStatus | str) -> HealthStatus:
 
 
 class ComponentHealthRead(BaseSchema):
-    """Универсальное состояние отдельного компонента системы."""
+    """Универсальное состояние отдельного компонента системы.
+
+    Используется для описания результата проверки любого инфраструктурного или
+    прикладного компонента: приложения, базы данных, хранилища, очереди,
+    внешнего сервиса и других зависимостей.
+
+    Attributes:
+        component: Название проверяемого компонента.
+        status: Публичный статус работоспособности компонента.
+        connection: Доступно ли подключение к компоненту, если это применимо.
+        latency_ms: Задержка проверки компонента в миллисекундах.
+        latency_threshold_ms: Порог допустимой задержки в миллисекундах.
+        error: Машиночитаемый тип ошибки, если проверка завершилась
+            неуспешно.
+        message: Человекочитаемое сообщение о состоянии компонента.
+        details: Дополнительные структурированные детали проверки.
+        checked_at: Дата и время проверки компонента.
+    """
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
@@ -83,6 +113,16 @@ class ComponentHealthRead(BaseSchema):
     @field_validator("component", "error", "message")
     @classmethod
     def normalize_optional_text(cls, value: str | None) -> str | None:
+        """Нормализует текстовые поля состояния компонента.
+
+        Args:
+            value: Исходное текстовое значение.
+
+        Returns:
+            Строка без пробелов по краям или ``None``, если значение
+            отсутствует либо содержит только пробельные символы.
+        """
+
         if value is None:
             return None
 
@@ -92,11 +132,31 @@ class ComponentHealthRead(BaseSchema):
     @field_validator("status", mode="before")
     @classmethod
     def normalize_status(cls, value: HealthStatus | str) -> HealthStatus:
+        """Нормализует статус компонента.
+
+        Args:
+            value: Исходный статус компонента.
+
+        Returns:
+            Нормализованный публичный статус ``HealthStatus``.
+
+        Raises:
+            ValueError: Если статус не поддерживается.
+        """
+
         return normalize_health_status(value)
 
 
 class DatabaseHealthRead(ComponentHealthRead):
-    """Состояние подключения к PostgreSQL."""
+    """Состояние подключения к PostgreSQL.
+
+    Расширяет универсальное состояние компонента значениями по умолчанию,
+    специфичными для проверки базы данных.
+
+    Attributes:
+        component: Название проверяемого компонента.
+        connection: Доступно ли подключение к базе данных.
+    """
 
     component: str = Field(
         default="database",
@@ -109,7 +169,24 @@ class DatabaseHealthRead(ComponentHealthRead):
 
 
 class StorageHealthRead(BaseSchema):
-    """Состояние подключения к объектному хранилищу."""
+    """Состояние подключения к объектному хранилищу.
+
+    Используется для публичного представления результата проверки storage:
+    подключения, доступа к bucket, операций чтения/записи, задержки и
+    дополнительных диагностических данных.
+
+    Attributes:
+        component: Название проверяемого компонента.
+        status: Публичный статус работоспособности объектного хранилища.
+        checked_at: Дата и время проверки объектного хранилища.
+        connection_ok: Доступно ли подключение к объектному хранилищу.
+        bucket_access_ok: Доступен ли проверяемый bucket.
+        read_write_ok: Успешна ли проверка чтения/записи.
+        latency_ms: Задержка проверки объектного хранилища в миллисекундах.
+        latency_threshold_ms: Порог допустимой задержки объектного хранилища в
+            миллисекундах.
+        details: Дополнительные структурированные детали проверки.
+    """
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
@@ -157,16 +234,39 @@ class StorageHealthRead(BaseSchema):
     @field_validator("status", mode="before")
     @classmethod
     def normalize_status(cls, value: HealthStatus | str) -> HealthStatus:
+        """Нормализует статус объектного хранилища.
+
+        Args:
+            value: Исходный статус объектного хранилища.
+
+        Returns:
+            Нормализованный публичный статус ``HealthStatus``.
+
+        Raises:
+            ValueError: Если статус не поддерживается.
+        """
+
         return normalize_health_status(value)
 
     @model_validator(mode="before")
     @classmethod
     def support_storage_health_status_shape(cls, data: Any) -> Any:
-        """
-        Поддерживает объект storage.types.StorageHealthStatus.
+        """Поддерживает объект ``storage.types.StorageHealthStatus``.
 
-        В storage DTO статус называется state, а в публичной API-схеме — status.
+        В storage DTO статус называется ``state``, а в публичной API-схеме —
+        ``status``. Валидатор преобразует объект или словарь внутреннего
+        формата к форме, ожидаемой публичной схемой.
+
+        Args:
+            data: Исходные данные для построения схемы. Может быть словарём,
+                объектом ``StorageHealthStatus`` или другим совместимым
+                объектом.
+
+        Returns:
+            Исходные данные без изменений либо словарь, приведённый к публичной
+            форме ``StorageHealthRead``.
         """
+
         if not isinstance(data, dict):
             state = getattr(data, "state", None)
             if state is not None:
@@ -194,7 +294,21 @@ class StorageHealthRead(BaseSchema):
 
 
 class ApplicationHealthRead(BaseSchema):
-    """Состояние самого backend-приложения."""
+    """Состояние самого backend-приложения.
+
+    Используется для описания работоспособности приложения без проверки
+    внешних зависимостей или вместе с ними в составе общего health-check.
+
+    Attributes:
+        component: Название проверяемого компонента.
+        status: Публичный статус работоспособности приложения.
+        app_name: Название приложения.
+        app_version: Версия приложения.
+        debug: Запущено ли приложение в debug-режиме.
+        uptime_seconds: Время работы приложения в секундах, если известно.
+        checked_at: Дата и время проверки приложения.
+        details: Дополнительные сведения о состоянии приложения.
+    """
 
     component: str = Field(
         default="application",
@@ -237,11 +351,39 @@ class ApplicationHealthRead(BaseSchema):
     @field_validator("status", mode="before")
     @classmethod
     def normalize_status(cls, value: HealthStatus | str) -> HealthStatus:
+        """Нормализует статус приложения.
+
+        Args:
+            value: Исходный статус приложения.
+
+        Returns:
+            Нормализованный публичный статус ``HealthStatus``.
+
+        Raises:
+            ValueError: Если статус не поддерживается.
+        """
+
         return normalize_health_status(value)
 
 
 class HealthCheckResponse(BaseSchema):
-    """Полный ответ health-check endpoint."""
+    """Полный ответ health-check endpoint.
+
+    Возвращает итоговый статус системы, сведения о приложении и основных
+    зависимостях, а также список дополнительных компонентов, если они
+    участвовали в проверке.
+
+    Attributes:
+        app_name: Название приложения.
+        app_version: Версия приложения.
+        status: Итоговый статус работоспособности системы.
+        checked_at: Дата и время выполнения общей проверки.
+        application: Состояние backend-приложения.
+        database: Состояние подключения к базе данных.
+        storage: Состояние объектного хранилища.
+        components: Дополнительные компоненты, участвующие в health-check.
+        details: Дополнительные сведения о результате проверки.
+    """
 
     app_name: str = Field(
         ...,
@@ -287,11 +429,38 @@ class HealthCheckResponse(BaseSchema):
     @field_validator("status", mode="before")
     @classmethod
     def normalize_status(cls, value: HealthStatus | str) -> HealthStatus:
+        """Нормализует итоговый health-статус системы.
+
+        Args:
+            value: Исходный итоговый статус.
+
+        Returns:
+            Нормализованный публичный статус ``HealthStatus``.
+
+        Raises:
+            ValueError: Если статус не поддерживается.
+        """
+
         return normalize_health_status(value)
 
 
 class ReadinessResponse(BaseSchema):
-    """Ответ проверки готовности приложения принимать пользовательские запросы."""
+    """Ответ проверки готовности приложения принимать пользовательские запросы.
+
+    Используется readiness endpoint-ом для отображения того, может ли
+    приложение обслуживать пользовательский трафик с учётом состояния ключевых
+    зависимостей.
+
+    Attributes:
+        app_name: Название приложения.
+        app_version: Версия приложения.
+        status: Статус готовности приложения.
+        ready: Готово ли приложение принимать пользовательские запросы.
+        checked_at: Дата и время проверки готовности.
+        database: Состояние базы данных, если проверка выполнялась.
+        storage: Состояние объектного хранилища, если проверка выполнялась.
+        details: Дополнительные сведения о готовности приложения.
+    """
 
     app_name: str = Field(
         ...,
@@ -333,11 +502,36 @@ class ReadinessResponse(BaseSchema):
     @field_validator("status", mode="before")
     @classmethod
     def normalize_status(cls, value: HealthStatus | str) -> HealthStatus:
+        """Нормализует статус готовности приложения.
+
+        Args:
+            value: Исходный статус готовности.
+
+        Returns:
+            Нормализованный публичный статус ``HealthStatus``.
+
+        Raises:
+            ValueError: Если статус не поддерживается.
+        """
+
         return normalize_health_status(value)
 
 
 class LivenessResponse(BaseSchema):
-    """Ответ проверки жизнеспособности backend-процесса."""
+    """Ответ проверки жизнеспособности backend-процесса.
+
+    Используется liveness endpoint-ом для отображения того, запущен ли
+    backend-процесс и способен ли он отвечать на базовые служебные запросы.
+
+    Attributes:
+        app_name: Название приложения.
+        app_version: Версия приложения.
+        status: Статус жизнеспособности приложения.
+        alive: Работает ли backend-процесс.
+        checked_at: Дата и время проверки жизнеспособности.
+        uptime_seconds: Время работы приложения в секундах, если известно.
+        details: Дополнительные сведения о жизнеспособности приложения.
+    """
 
     app_name: str = Field(
         ...,
@@ -376,4 +570,16 @@ class LivenessResponse(BaseSchema):
     @field_validator("status", mode="before")
     @classmethod
     def normalize_status(cls, value: HealthStatus | str) -> HealthStatus:
+        """Нормализует статус жизнеспособности приложения.
+
+        Args:
+            value: Исходный статус жизнеспособности.
+
+        Returns:
+            Нормализованный публичный статус ``HealthStatus``.
+
+        Raises:
+            ValueError: Если статус не поддерживается.
+        """
+
         return normalize_health_status(value)

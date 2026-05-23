@@ -14,7 +14,23 @@ COLOR_PATTERN = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
 
 
 def normalize_folder_color(value: str | None) -> str | None:
-    """Нормализует и проверяет цветовую метку папки."""
+    """Нормализует и проверяет цветовую метку папки.
+
+    Удаляет пробелы по краям значения, приводит пустые строки к ``None`` и
+    проверяет HEX-значения, если цветовая метка начинается с ``#``.
+
+    Args:
+        value: Исходное значение цветовой метки папки.
+
+    Returns:
+        Нормализованная цветовая метка или ``None``, если значение отсутствует
+        либо содержит только пробельные символы.
+
+    Raises:
+        ValueError: Если цветовая метка длиннее 32 символов.
+        ValueError: Если значение начинается с ``#``, но не является корректным
+            HEX-цветом в формате ``#fff`` или ``#ffffff``.
+    """
 
     if value is None:
         return None
@@ -38,7 +54,20 @@ def normalize_folder_color(value: str | None) -> str | None:
 
 
 class FolderCreateRequest(BaseSchema):
-    """Запрос на создание папки."""
+    """Запрос на создание папки.
+
+    Используется для создания новой папки в корне файловой системы или внутри
+    указанной родительской папки. Имя папки проверяется через общую валидацию
+    имени узла, описание нормализуется, а цветовая метка проверяется отдельным
+    валидатором.
+
+    Attributes:
+        name: Имя создаваемой папки.
+        parent_id: Идентификатор родительской папки. ``None`` означает создание
+            в корне.
+        description: Необязательное описание папки.
+        color: Цветовая метка папки для интерфейса.
+    """
 
     name: str = Field(
         ...,
@@ -66,11 +95,33 @@ class FolderCreateRequest(BaseSchema):
     @field_validator("name")
     @classmethod
     def validate_name(cls, value: str) -> str:
+        """Проверяет имя создаваемой папки.
+
+        Args:
+            value: Исходное имя папки.
+
+        Returns:
+            Нормализованное и валидное имя папки.
+
+        Raises:
+            ValueError: Если имя папки не проходит правила валидации узла.
+        """
+
         return validate_node_name(value)
 
     @field_validator("description")
     @classmethod
     def normalize_description(cls, value: str | None) -> str | None:
+        """Нормализует описание папки.
+
+        Args:
+            value: Исходное описание папки.
+
+        Returns:
+            Описание без пробелов по краям или ``None``, если значение
+            отсутствует либо содержит только пробельные символы.
+        """
+
         if value is None:
             return None
 
@@ -80,11 +131,31 @@ class FolderCreateRequest(BaseSchema):
     @field_validator("color")
     @classmethod
     def validate_color(cls, value: str | None) -> str | None:
+        """Проверяет и нормализует цветовую метку папки.
+
+        Args:
+            value: Исходное значение цветовой метки.
+
+        Returns:
+            Нормализованная цветовая метка или ``None``.
+
+        Raises:
+            ValueError: Если цветовая метка не проходит проверку.
+        """
+
         return normalize_folder_color(value)
 
 
 class FolderUpdateRequest(BaseSchema):
-    """Запрос на обновление metadata папки."""
+    """Запрос на обновление metadata папки.
+
+    Используется для изменения пользовательских metadata папки: описания и
+    цветовой метки. Значение ``None`` очищает соответствующее поле.
+
+    Attributes:
+        description: Новое описание папки. ``None`` очищает описание.
+        color: Новая цветовая метка папки. ``None`` очищает цвет.
+    """
 
     description: str | None = Field(
         default=None,
@@ -101,6 +172,16 @@ class FolderUpdateRequest(BaseSchema):
     @field_validator("description")
     @classmethod
     def normalize_description(cls, value: str | None) -> str | None:
+        """Нормализует новое описание папки.
+
+        Args:
+            value: Исходное описание папки.
+
+        Returns:
+            Описание без пробелов по краям или ``None``, если значение
+            отсутствует либо содержит только пробельные символы.
+        """
+
         if value is None:
             return None
 
@@ -110,11 +191,36 @@ class FolderUpdateRequest(BaseSchema):
     @field_validator("color")
     @classmethod
     def validate_color(cls, value: str | None) -> str | None:
+        """Проверяет и нормализует новую цветовую метку папки.
+
+        Args:
+            value: Исходное значение цветовой метки.
+
+        Returns:
+            Нормализованная цветовая метка или ``None``.
+
+        Raises:
+            ValueError: Если цветовая метка не проходит проверку.
+        """
+
         return normalize_folder_color(value)
 
 
 class FolderRead(BaseSchema):
-    """Полное представление папки."""
+    """Полное представление папки.
+
+    Используется для возврата подробных metadata папки вместе с общими данными
+    связанного узла файловой системы, если они были загружены.
+
+    Attributes:
+        id: Уникальный идентификатор metadata-записи папки.
+        node_id: Идентификатор узла файловой системы, связанного с папкой.
+        description: Описание папки.
+        color: Цветовая метка папки.
+        created_at: Дата и время создания metadata-записи папки.
+        updated_at: Дата и время последнего обновления metadata-записи папки.
+        node: Общие данные узла файловой системы, если они были загружены.
+    """
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
@@ -149,7 +255,20 @@ class FolderRead(BaseSchema):
 
 
 class FolderListItem(BaseSchema):
-    """Краткое представление папки для списков."""
+    """Краткое представление папки для списков.
+
+    Используется в списках файловой системы, когда клиенту достаточно кратких
+    metadata папки и краткой информации о связанном узле.
+
+    Attributes:
+        id: Уникальный идентификатор metadata-записи папки.
+        node_id: Идентификатор узла файловой системы, связанного с папкой.
+        description: Описание папки.
+        color: Цветовая метка папки.
+        created_at: Дата и время создания metadata-записи папки.
+        updated_at: Дата и время последнего обновления metadata-записи папки.
+        node: Краткие данные узла файловой системы, если они были загружены.
+    """
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
@@ -184,7 +303,17 @@ class FolderListItem(BaseSchema):
 
 
 class FolderContentRead(BaseSchema):
-    """Содержимое папки."""
+    """Содержимое папки.
+
+    Используется для возврата текущей папки, хлебных крошек и списка файлов или
+    подпапок, находящихся внутри неё.
+
+    Attributes:
+        folder: Папка, содержимое которой возвращается.
+        breadcrumbs: Цепочка родительских узлов от корня до текущей папки.
+        items: Файлы и папки внутри текущей папки.
+        total: Общее количество элементов в папке.
+    """
 
     folder: FolderRead = Field(
         ...,
@@ -206,7 +335,19 @@ class FolderContentRead(BaseSchema):
 
 
 class FolderArchiveRequest(BaseSchema):
-    """Запрос на фоновое создание ZIP-архива папки."""
+    """Запрос на фоновое создание ZIP-архива папки.
+
+    Используется для постановки фоновой задачи, которая создаёт ZIP-архив
+    содержимого папки. Имя архива проверяется как имя узла файловой системы, а
+    расширение ``.zip`` при необходимости удаляется из пользовательского ввода.
+
+    Attributes:
+        folder_id: Идентификатор папки, для которой нужно создать ZIP-архив.
+        include_deleted: Включать ли логически удалённые элементы в архив.
+        archive_name: Желаемое имя архива без обязательного расширения
+            ``.zip``.
+        password: Пароль для архива, если поддерживается сервисным слоем.
+    """
 
     folder_id: UUID = Field(
         ...,
@@ -233,6 +374,20 @@ class FolderArchiveRequest(BaseSchema):
     @field_validator("archive_name")
     @classmethod
     def validate_archive_name(cls, value: str | None) -> str | None:
+        """Проверяет и нормализует имя создаваемого архива.
+
+        Args:
+            value: Исходное имя архива или ``None``.
+
+        Returns:
+            Нормализованное имя архива без расширения ``.zip`` или ``None``,
+            если имя архива не задано.
+
+        Raises:
+            ValueError: Если имя архива не проходит правила валидации узла или
+                становится пустым после удаления расширения ``.zip``.
+        """
+
         if value is None:
             return None
 
@@ -248,7 +403,15 @@ class FolderArchiveRequest(BaseSchema):
 
 
 class FolderArchiveResponse(BaseSchema):
-    """Ответ на запрос создания ZIP-архива папки."""
+    """Ответ на запрос создания ZIP-архива папки.
+
+    Возвращается после успешной постановки фоновой задачи на создание архива.
+
+    Attributes:
+        task_id: Идентификатор фоновой задачи создания архива.
+        status: Текущий статус фоновой задачи.
+        message: Сообщение о результате постановки задачи.
+    """
 
     task_id: UUID = Field(
         ...,
