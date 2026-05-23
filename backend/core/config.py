@@ -153,7 +153,7 @@ def get_settings() -> Settings:
 
 
 class _SettingsProxy:
-    """Lazy proxy that keeps ``from core import settings`` import-safe."""
+    """Ленивый proxy, который делает импорт ``from core import settings`` безопасным."""
 
     def __getattr__(self, name: str) -> object:
         return getattr(get_settings(), name)
