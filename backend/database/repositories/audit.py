@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.exceptions import EntityNotFoundError, InvalidQueryError
 from database.models.audit import AuditLog
-from database.models.enums import AuditAction
+from database.models.enums import AuditAction, AuditResourceType, AuditResult
 from database.repositories.base import BaseRepository
 
 AuditSortField = Literal[
@@ -141,6 +141,85 @@ class AuditLogRepository(BaseRepository[AuditLog]):
     # Создание событий аудита
     # ------------------------------------------------------------------
 
+    async def create_event(
+        self,
+        *,
+        action: AuditAction,
+        result: AuditResult = AuditResult.SUCCESS,
+        user_id: uuid.UUID | None = None,
+        entity_type: str | None = None,
+        entity_id: uuid.UUID | None = None,
+        resource_type: AuditResourceType | None = None,
+        request_id: str | None = None,
+        correlation_id: str | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+        message: str | None = None,
+        error_code: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        flush: bool = True,
+        refresh: bool = False,
+    ) -> AuditLog:
+        """Creates and stores a complete audit event."""
+
+        common_kwargs: dict[str, Any] = {
+            "action": action,
+            "entity_type": self._normalize_entity_type(entity_type),
+            "entity_id": entity_id,
+            "resource_type": resource_type,
+            "request_id": self._normalize_identifier(
+                request_id,
+                field_name="request_id",
+            ),
+            "correlation_id": self._normalize_identifier(
+                correlation_id,
+                field_name="correlation_id",
+            ),
+            "message": message,
+            "error_code": self._normalize_identifier(
+                error_code,
+                field_name="error_code",
+            ),
+            "metadata": metadata,
+        }
+
+        if result == AuditResult.FAILURE:
+            audit_log = AuditLog.create_failure_event(
+                user_id=user_id,
+                ip_address=self._normalize_ip_address(ip_address),
+                user_agent=self._normalize_user_agent(user_agent),
+                **common_kwargs,
+            )
+        elif result == AuditResult.DENIED:
+            audit_log = AuditLog.create_denied_event(
+                action=action,
+                user_id=user_id,
+                entity_type=common_kwargs["entity_type"],
+                entity_id=entity_id,
+                resource_type=resource_type,
+                ip_address=self._normalize_ip_address(ip_address),
+                user_agent=self._normalize_user_agent(user_agent),
+                request_id=common_kwargs["request_id"],
+                correlation_id=common_kwargs["correlation_id"],
+                message=message,
+                metadata=metadata,
+            )
+        elif user_id is not None:
+            audit_log = AuditLog.create_user_event(
+                user_id=user_id,
+                result=result,
+                ip_address=self._normalize_ip_address(ip_address),
+                user_agent=self._normalize_user_agent(user_agent),
+                **common_kwargs,
+            )
+        else:
+            audit_log = AuditLog.create_system_event(
+                result=result,
+                **common_kwargs,
+            )
+
+        return await self.create(audit_log, flush=flush, refresh=refresh)
+
     async def create_log(
         self,
         *,
@@ -181,18 +260,14 @@ class AuditLogRepository(BaseRepository[AuditLog]):
             RepositoryError: При ошибках работы с базой данных.
         """
 
-        audit_log = AuditLog(
-            user_id=user_id,
+        return await self.create_event(
             action=action,
-            entity_type=self._normalize_entity_type(entity_type),
+            user_id=user_id,
+            entity_type=entity_type,
             entity_id=entity_id,
-            ip_address=self._normalize_ip_address(ip_address),
-            user_agent=self._normalize_user_agent(user_agent),
-            metadata_=metadata,
-        )
-
-        return await self.create(
-            audit_log,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            metadata=metadata,
             flush=flush,
             refresh=refresh,
         )
@@ -1193,7 +1268,8 @@ class AuditLogRepository(BaseRepository[AuditLog]):
             if flush:
                 await self.flush()
 
-            return int(result.rowcount or 0)  # type: ignore[attr-defined]
+            rowcount = getattr(result, "rowcount", 0)
+            return int(rowcount or 0)
 
         except IntegrityError as exc:
             raise self._handle_integrity_error(
@@ -1508,6 +1584,34 @@ class AuditLogRepository(BaseRepository[AuditLog]):
         normalized = user_agent.strip()
 
         return normalized or None
+
+    def _normalize_identifier(
+        self,
+        value: str | None,
+        *,
+        field_name: str,
+        max_length: int = 128,
+    ) -> str | None:
+        """Normalizes short audit identifiers stored in VARCHAR fields."""
+
+        if value is None:
+            return None
+
+        normalized = value.strip()
+        if not normalized:
+            return None
+        if len(normalized) > max_length:
+            raise InvalidQueryError(
+                "Audit identifier is too long.",
+                repository=self.repository_name,
+                operation="_normalize_identifier",
+                details={
+                    "field": field_name,
+                    "length": len(normalized),
+                    "max_length": max_length,
+                },
+            )
+        return normalized
 
     def _get_order_by(
         self,

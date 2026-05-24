@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Any, TypedDict
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -1847,6 +1847,96 @@ class FileRepository(BaseRepository[File]):
             operation="list_user_files",
         )
 
+    async def search_user_files(
+        self,
+        *,
+        owner_id: uuid.UUID,
+        parent_id: uuid.UUID | None = None,
+        include_deleted_nodes: bool = False,
+        query: str | None = None,
+        mime_type: str | None = None,
+        extension: str | None = None,
+        storage_status: StorageObjectStatus | None = None,
+        processing_status: FileProcessingStatus | None = None,
+        preview_status: FilePreviewStatus | None = None,
+        min_size_bytes: int | None = None,
+        max_size_bytes: int | None = None,
+        created_from: Any | None = None,
+        created_to: Any | None = None,
+        updated_from: Any | None = None,
+        updated_to: Any | None = None,
+        sort_by: str = "created_at",
+        sort_direction: str = "desc",
+        offset: int = 0,
+        limit: int = 100,
+    ) -> list[File]:
+        self._validate_pagination(offset=offset, limit=limit)
+        statement = self._build_search_statement(
+            owner_id=owner_id,
+            parent_id=parent_id,
+            include_deleted_nodes=include_deleted_nodes,
+            query=query,
+            mime_type=mime_type,
+            extension=extension,
+            storage_status=storage_status,
+            processing_status=processing_status,
+            preview_status=preview_status,
+            min_size_bytes=min_size_bytes,
+            max_size_bytes=max_size_bytes,
+            created_from=created_from,
+            created_to=created_to,
+            updated_from=updated_from,
+            updated_to=updated_to,
+            sort_by=sort_by,
+            sort_direction=sort_direction,
+        ).offset(offset).limit(limit)
+        return await self.scalars_all(statement, operation="search_user_files")
+
+    async def count_user_files_filtered(
+        self,
+        *,
+        owner_id: uuid.UUID,
+        parent_id: uuid.UUID | None = None,
+        include_deleted_nodes: bool = False,
+        query: str | None = None,
+        mime_type: str | None = None,
+        extension: str | None = None,
+        storage_status: StorageObjectStatus | None = None,
+        processing_status: FileProcessingStatus | None = None,
+        preview_status: FilePreviewStatus | None = None,
+        min_size_bytes: int | None = None,
+        max_size_bytes: int | None = None,
+        created_from: Any | None = None,
+        created_to: Any | None = None,
+        updated_from: Any | None = None,
+        updated_to: Any | None = None,
+    ) -> int:
+        statement = self._build_search_statement(
+            owner_id=owner_id,
+            parent_id=parent_id,
+            include_deleted_nodes=include_deleted_nodes,
+            query=query,
+            mime_type=mime_type,
+            extension=extension,
+            storage_status=storage_status,
+            processing_status=processing_status,
+            preview_status=preview_status,
+            min_size_bytes=min_size_bytes,
+            max_size_bytes=max_size_bytes,
+            created_from=created_from,
+            created_to=created_to,
+            updated_from=updated_from,
+            updated_to=updated_to,
+            sort_by="created_at",
+            sort_direction="desc",
+        )
+        count_statement = select(func.count()).select_from(statement.subquery())
+        total = await self.scalar_value(
+            count_statement,
+            operation="count_user_files_filtered",
+        )
+        return int(total or 0)
+
     async def list_child_files(
         self,
         *,
@@ -2244,6 +2334,89 @@ class FileRepository(BaseRepository[File]):
             )
 
         return node
+
+    def _build_search_statement(
+        self,
+        *,
+        owner_id: uuid.UUID,
+        parent_id: uuid.UUID | None,
+        include_deleted_nodes: bool,
+        query: str | None,
+        mime_type: str | None,
+        extension: str | None,
+        storage_status: StorageObjectStatus | None,
+        processing_status: FileProcessingStatus | None,
+        preview_status: FilePreviewStatus | None,
+        min_size_bytes: int | None,
+        max_size_bytes: int | None,
+        created_from: Any | None,
+        created_to: Any | None,
+        updated_from: Any | None,
+        updated_to: Any | None,
+        sort_by: str,
+        sort_direction: str,
+    ) -> Select[tuple[File]]:
+        statement = (
+            select(File)
+            .join(FileSystemNode, File.node_id == FileSystemNode.id)
+            .where(
+                FileSystemNode.owner_id == owner_id,
+                FileSystemNode.node_type == NodeType.FILE,
+            )
+            .options(selectinload(File.node), selectinload(File.current_version))
+        )
+        if parent_id is not None:
+            statement = statement.where(FileSystemNode.parent_id == parent_id)
+        if not include_deleted_nodes:
+            statement = statement.where(FileSystemNode.is_deleted.is_(False))
+        if query:
+            normalized_query = query.strip()
+            if normalized_query:
+                pattern = f"%{normalized_query}%"
+                statement = statement.where(
+                    or_(
+                        FileSystemNode.name.ilike(pattern),
+                        FileSystemNode.path.ilike(pattern),
+                        File.mime_type.ilike(pattern),
+                        File.extension.ilike(pattern),
+                        File.checksum.ilike(pattern),
+                    )
+                )
+        if mime_type is not None:
+            statement = statement.where(File.mime_type == mime_type)
+        if extension is not None:
+            statement = statement.where(File.extension == extension)
+        if storage_status is not None:
+            statement = statement.where(File.storage_status == storage_status)
+        if processing_status is not None:
+            statement = statement.where(File.processing_status == processing_status)
+        if preview_status is not None:
+            statement = statement.where(File.preview_status == preview_status)
+        if min_size_bytes is not None:
+            statement = statement.where(File.size_bytes >= min_size_bytes)
+        if max_size_bytes is not None:
+            statement = statement.where(File.size_bytes <= max_size_bytes)
+        if created_from is not None:
+            statement = statement.where(File.created_at >= created_from)
+        if created_to is not None:
+            statement = statement.where(File.created_at <= created_to)
+        if updated_from is not None:
+            statement = statement.where(File.updated_at >= updated_from)
+        if updated_to is not None:
+            statement = statement.where(File.updated_at <= updated_to)
+
+        sort_columns: dict[str, Any] = {
+            "name": func.lower(FileSystemNode.name),
+            "path": func.lower(FileSystemNode.path),
+            "size_bytes": File.size_bytes,
+            "mime_type": File.mime_type,
+            "extension": File.extension,
+            "created_at": File.created_at,
+            "updated_at": File.updated_at,
+        }
+        column = sort_columns.get(sort_by.strip().lower(), File.created_at)
+        is_desc = sort_direction.strip().lower() == "desc"
+        return statement.order_by(column.desc() if is_desc else column.asc())
 
     def _validate_storage_bucket(
         self,

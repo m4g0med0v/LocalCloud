@@ -1,3 +1,23 @@
+"""
+Сервис управления пользовательскими квотами и счетчиками ресурсов.
+
+Модуль содержит бизнес-логику создания, получения, обновления, проверки и
+пересчета пользовательских квот. Квоты ограничивают объем хранилища, размер
+одного файла, количество файлов, публичных ссылок и активных upload-сессий.
+
+Основные операции модуля:
+    * Создание явной или стандартной квоты пользователя.
+    * Получение квоты и текущего использования ресурсов.
+    * Обновление лимитов и сохраненных счетчиков квоты.
+    * Проверка доступности ресурса в рамках текущих лимитов.
+    * Выброс ошибки при превышении квоты.
+    * Атомарное увеличение и уменьшение счетчиков использования.
+    * Проверка возможности сохранить файл заданного размера.
+    * Пересчет счетчиков квоты по данным базы.
+    * Получение квот, близких к лимиту или превысивших лимит.
+    * Запись событий изменения и превышения квот в аудит.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -35,7 +55,16 @@ REPOSITORY_PAGE_LIMIT = 1000
 
 
 class QuotasService:
-    """Business service for user quota limits and resource usage counters."""
+    """Сервис бизнес-логики для пользовательских квот.
+
+    Управляет лимитами и счетчиками использования ресурсов пользователя.
+    Сервис создает квоты, проверяет доступность ресурсов, обновляет счетчики,
+    пересчитывает использование по данным базы и записывает события аудита.
+
+    Attributes:
+        uow_factory: Фабрика Unit of Work для работы с базой данных.
+        audit_service: Сервис записи событий аудита.
+    """
 
     def __init__(
         self,
@@ -43,6 +72,18 @@ class QuotasService:
         uow_factory: UnitOfWorkFactory | None = None,
         audit_service: AuditService | None = None,
     ) -> None:
+        """Инициализирует сервис квот.
+
+        Если зависимости не переданы явно, создает их через стандартные фабрики
+        и функции получения сервисов.
+
+        Args:
+            uow_factory: Фабрика Unit of Work. Если None, создается стандартная
+                фабрика.
+            audit_service: Сервис аудита. Если None, создается стандартный сервис
+                аудита.
+        """
+
         self.uow_factory = uow_factory or create_unit_of_work_factory()
         self.audit_service = audit_service or get_audit_service(
             uow_factory=self.uow_factory,
@@ -51,7 +92,23 @@ class QuotasService:
     async def create_quota(
         self, data: UserQuotaCreate, *, actor_id: UUID | None = None
     ) -> UserQuotaRead:
-        """Create an explicit quota for a user."""
+        """Создает явную квоту пользователя.
+
+        Создает запись UserQuota с переданными лимитами и начальными счетчиками
+        использования. После успешного создания записывает событие аудита.
+
+        Args:
+            data: Данные для создания квоты пользователя.
+            actor_id: Идентификатор пользователя, выполняющего операцию. Если None,
+                событие аудита записывается как системное.
+
+        Returns:
+            Данные созданной квоты пользователя.
+
+        Raises:
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
 
         operation = "create_quota"
         snapshot: dict[str, Any] = {}
@@ -110,7 +167,31 @@ class QuotasService:
         public_links_limit: int | None = 100,
         active_upload_sessions_limit: int | None = 10,
     ) -> UserQuotaRead:
-        """Create a quota with LocalCloud default limits."""
+        """Создает стандартную квоту пользователя.
+
+        Создает квоту с дефолтными лимитами LocalCloud или с лимитами, переданными
+        явно. Начальные счетчики использования задаются репозиторием квот.
+
+        Args:
+            user_id: Идентификатор пользователя, для которого создается квота.
+            actor_id: Идентификатор пользователя, выполняющего операцию. Если None,
+                событие аудита записывается как системное.
+            storage_limit_bytes: Лимит общего объема хранилища в байтах.
+            max_file_size_bytes: Максимальный размер одного файла в байтах.
+            files_limit: Лимит количества файлов. Если None, количество файлов
+                не ограничено.
+            public_links_limit: Лимит количества публичных ссылок. Если None,
+                количество публичных ссылок не ограничено.
+            active_upload_sessions_limit: Лимит активных upload-сессий. Если None,
+                количество активных сессий не ограничено.
+
+        Returns:
+            Данные созданной стандартной квоты.
+
+        Raises:
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
 
         operation = "create_default_quota"
         snapshot: dict[str, Any] = {}
@@ -165,7 +246,31 @@ class QuotasService:
         public_links_limit: int | None = 100,
         active_upload_sessions_limit: int | None = 10,
     ) -> UserQuotaRead:
-        """Return an existing quota or create the default quota for a user."""
+        """Возвращает существующую квоту или создает стандартную.
+
+        Сначала пытается найти квоту пользователя. Если квота существует,
+        возвращает ее. Если квота отсутствует, создает новую стандартную квоту.
+
+        Args:
+            user_id: Идентификатор пользователя.
+            actor_id: Идентификатор пользователя, выполняющего операцию. Если None,
+                создание квоты логируется как системное событие.
+            storage_limit_bytes: Лимит общего объема хранилища в байтах для новой
+                квоты.
+            max_file_size_bytes: Максимальный размер одного файла в байтах для новой
+                квоты.
+            files_limit: Лимит количества файлов для новой квоты.
+            public_links_limit: Лимит количества публичных ссылок для новой квоты.
+            active_upload_sessions_limit: Лимит активных upload-сессий для новой
+                квоты.
+
+        Returns:
+            Существующая или созданная стандартная квота пользователя.
+
+        Raises:
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
 
         existing = await self.get_quota_or_none(user_id)
         if existing is not None:
@@ -181,6 +286,19 @@ class QuotasService:
         )
 
     async def get_quota(self, user_id: UUID) -> UserQuotaRead:
+        """Возвращает квоту пользователя.
+
+        Args:
+            user_id: Идентификатор пользователя.
+
+        Returns:
+            Данные квоты пользователя.
+
+        Raises:
+            ServiceError: Если квота не найдена, произошла ошибка базы данных или
+                непредвиденная ошибка сервиса.
+        """
+
         operation = "get_quota"
         result: UserQuotaRead | None = None
         try:
@@ -203,6 +321,19 @@ class QuotasService:
             ) from exc
 
     async def get_quota_or_none(self, user_id: UUID) -> UserQuotaRead | None:
+        """Возвращает квоту пользователя или None.
+
+        Args:
+            user_id: Идентификатор пользователя.
+
+        Returns:
+            Данные квоты пользователя или None, если квота отсутствует.
+
+        Raises:
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         operation = "get_quota_or_none"
         try:
             async with self.uow_factory() as uow:
@@ -227,6 +358,19 @@ class QuotasService:
             ) from exc
 
     async def get_usage(self, user_id: UUID) -> QuotaUsageRead:
+        """Возвращает текущее использование квоты пользователя.
+
+        Args:
+            user_id: Идентификатор пользователя.
+
+        Returns:
+            Данные использования ресурсов пользователя.
+
+        Raises:
+            ServiceError: Если квота не найдена, произошла ошибка базы данных или
+                непредвиденная ошибка сервиса.
+        """
+
         operation = "get_usage"
         result: QuotaUsageRead | None = None
         try:
@@ -257,7 +401,25 @@ class QuotasService:
         *,
         actor_id: UUID | None = None,
     ) -> UserQuotaRead:
-        """Update quota limits and, when explicitly provided, stored counters."""
+        """Обновляет лимиты и счетчики квоты пользователя.
+
+        Обновляет только явно переданные поля. Лимиты обновляются отдельно от
+        счетчиков использования. Если данные обновления пустые, возвращает текущую
+        квоту без изменений. После успешного обновления записывает событие аудита.
+
+        Args:
+            user_id: Идентификатор пользователя, чья квота обновляется.
+            data: Данные обновления квоты.
+            actor_id: Идентификатор пользователя, выполняющего операцию. Если None,
+                событие аудита записывается как системное.
+
+        Returns:
+            Обновленная квота пользователя.
+
+        Raises:
+            ServiceError: Если квота не найдена, произошла ошибка базы данных или
+                непредвиденная ошибка сервиса.
+        """
 
         operation = "update_quota"
         values = data.model_dump(exclude_unset=True)
@@ -367,7 +529,23 @@ class QuotasService:
             ) from exc
 
     async def check_quota(self, data: QuotaCheckRequest) -> QuotaCheckResponse:
-        """Check whether a requested resource amount fits into the current quota."""
+        """Проверяет, помещается ли запрошенный ресурс в текущую квоту.
+
+        Загружает квоту пользователя и сравнивает requested_amount с доступным
+        остатком по указанному типу ресурса.
+
+        Args:
+            data: Данные проверки квоты.
+
+        Returns:
+            Результат проверки с признаком allowed, лимитом, текущим использованием,
+            доступным остатком и причиной отказа.
+
+        Raises:
+            ValidationServiceError: Если тип ресурса квоты не поддерживается.
+            ServiceError: Если квота не найдена, произошла ошибка базы данных или
+                непредвиденная ошибка сервиса.
+        """
 
         operation = "check_quota"
         snapshot: dict[str, Any] = {}
@@ -398,7 +576,26 @@ class QuotasService:
         *,
         actor_id: UUID | None = None,
     ) -> QuotaCheckResponse:
-        """Check quota and raise a service error when the operation is denied."""
+        """Проверяет квоту и выбрасывает ошибку при отказе.
+
+        Если квота позволяет операцию, возвращает результат проверки. Если лимит
+        превышен, записывает событие аудита и выбрасывает QuotaExceededServiceError.
+
+        Args:
+            data: Данные проверки квоты.
+            actor_id: Идентификатор пользователя, выполняющего операцию. Если None,
+                событие аудита записывается как системное.
+
+        Returns:
+            Успешный результат проверки квоты.
+
+        Raises:
+            QuotaExceededServiceError: Если запрошенный ресурс превышает доступную
+                квоту.
+            ValidationServiceError: Если тип ресурса квоты не поддерживается.
+            ServiceError: Если квота не найдена, произошла ошибка базы данных или
+                непредвиденная ошибка сервиса.
+        """
 
         response = await self.check_quota(data)
         if response.allowed:
@@ -435,7 +632,30 @@ class QuotasService:
         actor_id: UUID | None = None,
         check_limit: bool = True,
     ) -> UserQuotaRead:
-        """Increase a stored quota counter atomically."""
+        """Атомарно увеличивает счетчик использования ресурса.
+
+        При check_limit=True сначала проверяет, что увеличение не превысит лимит.
+        Затем увеличивает соответствующий счетчик квоты и возвращает обновленную
+        квоту.
+
+        Args:
+            user_id: Идентификатор пользователя.
+            resource_type: Тип ресурса квоты.
+            amount: Количество ресурса, на которое нужно увеличить счетчик.
+            actor_id: Идентификатор пользователя, выполняющего операцию. Используется
+                для аудита при превышении квоты.
+            check_limit: Нужно ли проверять лимит перед увеличением.
+
+        Returns:
+            Обновленная квота пользователя.
+
+        Raises:
+            ValidationServiceError: Если amount некорректен или тип ресурса не
+                поддерживается.
+            QuotaExceededServiceError: Если check_limit=True и лимит будет превышен.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
 
         operation = "increase_usage"
         self._validate_amount(amount, operation=operation)
@@ -486,7 +706,25 @@ class QuotasService:
         resource_type: QuotaResourceType,
         amount: int = 1,
     ) -> UserQuotaRead:
-        """Decrease a stored quota counter atomically without going below zero."""
+        """Атомарно уменьшает счетчик использования ресурса.
+
+        Уменьшает соответствующий счетчик квоты без ухода ниже нуля. Точное
+        поведение ограничения до нуля реализуется репозиторием квот.
+
+        Args:
+            user_id: Идентификатор пользователя.
+            resource_type: Тип ресурса квоты.
+            amount: Количество ресурса, на которое нужно уменьшить счетчик.
+
+        Returns:
+            Обновленная квота пользователя.
+
+        Raises:
+            ValidationServiceError: Если amount некорректен или тип ресурса не
+                поддерживается.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
 
         operation = "decrease_usage"
         self._validate_amount(amount, operation=operation)
@@ -522,6 +760,23 @@ class QuotasService:
             ) from exc
 
     async def can_store_file(self, user_id: UUID, file_size_bytes: int) -> bool:
+        """Проверяет, можно ли сохранить файл заданного размера.
+
+        Проверяет размер файла на корректность и делегирует расчет репозиторию квот.
+
+        Args:
+            user_id: Идентификатор пользователя.
+            file_size_bytes: Размер файла в байтах.
+
+        Returns:
+            True, если файл можно сохранить в рамках квоты, иначе False.
+
+        Raises:
+            ValidationServiceError: Если размер файла некорректен.
+            ServiceError: Если репозиторий не вернул результат, произошла ошибка
+                базы данных или непредвиденная ошибка сервиса.
+        """
+
         operation = "can_store_file"
         self._validate_amount(file_size_bytes, operation=operation, allow_zero=True)
         result: bool | None = None
@@ -561,6 +816,25 @@ class QuotasService:
         *,
         actor_id: UUID | None = None,
     ) -> None:
+        """Проверяет возможность сохранить файл и выбрасывает ошибку при отказе.
+
+        Если файл можно сохранить, метод завершается без результата. Если лимиты
+        превышены, выполняет подробную проверку квоты, записывает событие аудита
+        и выбрасывает QuotaExceededServiceError.
+
+        Args:
+            user_id: Идентификатор пользователя.
+            file_size_bytes: Размер файла в байтах.
+            actor_id: Идентификатор пользователя, выполняющего операцию. Если None,
+                событие аудита записывается как системное.
+
+        Raises:
+            ValidationServiceError: Если размер файла некорректен.
+            QuotaExceededServiceError: Если файл нельзя сохранить из-за лимитов.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         allowed = await self.can_store_file(user_id, file_size_bytes)
         if allowed:
             return
@@ -603,7 +877,25 @@ class QuotasService:
         *,
         actor_id: UUID | None = None,
     ) -> UserQuotaRead:
-        """Recalculate quota counters from database metadata."""
+        """Пересчитывает счетчики квоты по данным базы.
+
+        В зависимости от списка resource_types пересчитывает все счетчики, только
+        использование хранилища, только счетчики количества ресурсов или обе группы
+        по отдельности. После пересчета записывает событие аудита.
+
+        Args:
+            data: Данные запроса на пересчет квоты.
+            actor_id: Идентификатор пользователя, выполняющего операцию. Если None,
+                событие аудита записывается как системное.
+
+        Returns:
+            Пересчитанная квота пользователя.
+
+        Raises:
+            ValidationServiceError: Если тип ресурса квоты не поддерживается.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
 
         operation = "recalculate_quota"
         resource_types = set(data.resource_types or list(QuotaResourceType))
@@ -667,6 +959,25 @@ class QuotasService:
         offset: int = 0,
         limit: int = 100,
     ) -> PageResponse[UserQuotaRead]:
+        """Возвращает квоты, близкие к лимиту.
+
+        Загружает все квоты, использование которых достигло заданного процента
+        лимита, затем формирует страницу результата.
+
+        Args:
+            threshold_percent: Порог использования квоты в процентах.
+            offset: Смещение для постраничной выдачи.
+            limit: Максимальное количество элементов в ответе.
+
+        Returns:
+            Страница квот, близких к лимиту.
+
+        Raises:
+            ValidationServiceError: Если offset или limit некорректны.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         operation = "list_near_limit"
         self._validate_pagination(offset=offset, limit=limit)
         snapshots: list[dict[str, Any]] = []
@@ -706,6 +1017,24 @@ class QuotasService:
         offset: int = 0,
         limit: int = 100,
     ) -> PageResponse[UserQuotaRead]:
+        """Возвращает квоты с превышением лимита.
+
+        Загружает все квоты, которые превысили хотя бы один лимит, затем формирует
+        страницу результата.
+
+        Args:
+            offset: Смещение для постраничной выдачи.
+            limit: Максимальное количество элементов в ответе.
+
+        Returns:
+            Страница квот с превышением лимита.
+
+        Raises:
+            ValidationServiceError: Если offset или limit некорректны.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         operation = "list_over_limit"
         self._validate_pagination(offset=offset, limit=limit)
         snapshots: list[dict[str, Any]] = []
@@ -744,6 +1073,24 @@ class QuotasService:
         resource_type: QuotaResourceType,
         amount: int,
     ) -> UserQuota:
+        """Увеличивает счетчик указанного ресурса.
+
+        Выбирает метод репозитория квот по resource_type и увеличивает
+        соответствующий счетчик.
+
+        Args:
+            uow: Unit of Work с репозиторием квот.
+            user_id: Идентификатор пользователя.
+            resource_type: Тип ресурса квоты.
+            amount: Количество ресурса для увеличения.
+
+        Returns:
+            ORM-модель обновленной квоты.
+
+        Raises:
+            ValidationServiceError: Если тип ресурса не поддерживается.
+        """
+
         if resource_type == QuotaResourceType.STORAGE_BYTES:
             return await uow.quotas.increase_used_space(
                 user_id,
@@ -782,6 +1129,24 @@ class QuotasService:
         resource_type: QuotaResourceType,
         amount: int,
     ) -> UserQuota:
+        """Уменьшает счетчик указанного ресурса.
+
+        Выбирает метод репозитория квот по resource_type и уменьшает
+        соответствующий счетчик.
+
+        Args:
+            uow: Unit of Work с репозиторием квот.
+            user_id: Идентификатор пользователя.
+            resource_type: Тип ресурса квоты.
+            amount: Количество ресурса для уменьшения.
+
+        Returns:
+            ORM-модель обновленной квоты.
+
+        Raises:
+            ValidationServiceError: Если тип ресурса не поддерживается.
+        """
+
         if resource_type == QuotaResourceType.STORAGE_BYTES:
             return await uow.quotas.decrease_used_space(
                 user_id,
@@ -815,6 +1180,19 @@ class QuotasService:
     async def _collect_near_limit_snapshots(
         self, *, uow: Any, threshold_percent: float
     ) -> list[dict[str, Any]]:
+        """Загружает снимки квот, близких к лимиту.
+
+        Читает данные батчами до тех пор, пока очередной батч не станет меньше
+        REPOSITORY_PAGE_LIMIT.
+
+        Args:
+            uow: Unit of Work с репозиторием квот.
+            threshold_percent: Порог использования квоты в процентах.
+
+        Returns:
+            Список снимков квот, близких к лимиту.
+        """
+
         snapshots: list[dict[str, Any]] = []
         offset = 0
         while True:
@@ -830,6 +1208,18 @@ class QuotasService:
         return snapshots
 
     async def _collect_over_limit_snapshots(self, *, uow: Any) -> list[dict[str, Any]]:
+        """Загружает снимки квот с превышением лимита.
+
+        Читает данные батчами до тех пор, пока очередной батч не станет меньше
+        REPOSITORY_PAGE_LIMIT.
+
+        Args:
+            uow: Unit of Work с репозиторием квот.
+
+        Returns:
+            Список снимков квот с превышением лимита.
+        """
+
         snapshots: list[dict[str, Any]] = []
         offset = 0
         while True:
@@ -847,6 +1237,20 @@ class QuotasService:
     def _validate_amount(
         amount: int, *, operation: str, allow_zero: bool = False
     ) -> None:
+        """Проверяет корректность количества ресурса.
+
+        Значение должно быть int, но не bool. По умолчанию значение должно быть
+        больше нуля. Если allow_zero=True, ноль считается допустимым.
+
+        Args:
+            amount: Проверяемое количество ресурса.
+            operation: Название операции для контекста ошибок.
+            allow_zero: Разрешен ли ноль.
+
+        Raises:
+            ValidationServiceError: Если amount имеет неверный тип или значение.
+        """
+
         if not isinstance(amount, int) or isinstance(amount, bool):
             raise ValidationServiceError(
                 "Количество ресурса должно быть целым числом.",
@@ -866,6 +1270,17 @@ class QuotasService:
 
     @staticmethod
     def _validate_pagination(*, offset: int, limit: int) -> None:
+        """Проверяет параметры пагинации.
+
+        Args:
+            offset: Смещение страницы.
+            limit: Размер страницы.
+
+        Raises:
+            ValidationServiceError: Если offset отрицательный или limit находится
+                вне диапазона от 1 до MAX_PAGE_LIMIT.
+        """
+
         if offset < 0:
             raise ValidationServiceError(
                 "offset не может быть отрицательным.",
@@ -885,6 +1300,15 @@ class QuotasService:
 
     @staticmethod
     def _invalid_resource_type(resource_type: Any) -> ValidationServiceError:
+        """Создает ошибку неподдерживаемого типа ресурса квоты.
+
+        Args:
+            resource_type: Значение типа ресурса.
+
+        Returns:
+            Ошибка валидации для неподдерживаемого типа ресурса.
+        """
+
         return ValidationServiceError(
             "Тип ресурса квоты не поддерживается.",
             field="resource_type",
@@ -895,6 +1319,19 @@ class QuotasService:
 
     @staticmethod
     def _require_result(result: Any | None, *, operation: str) -> Any:
+        """Возвращает результат или выбрасывает ошибку при его отсутствии.
+
+        Args:
+            result: Результат операции.
+            operation: Название операции для контекста ошибки.
+
+        Returns:
+            Переданный результат, если он не None.
+
+        Raises:
+            ServiceError: Если result равен None.
+        """
+
         if result is None:
             raise ServiceError(
                 "Сервис квот не вернул результат операции.",
@@ -907,6 +1344,17 @@ class QuotasService:
     def _database_error(
         exc: DatabaseError, *, operation: str, message: str
     ) -> ServiceError:
+        """Преобразует ошибку базы данных в ошибку сервиса квот.
+
+        Args:
+            exc: Исходная ошибка базы данных.
+            operation: Название операции, во время которой возникла ошибка.
+            message: Сообщение для создаваемой ошибки сервиса.
+
+        Returns:
+            Ошибка сервисного уровня с контекстом сервиса квот.
+        """
+
         return service_error_from_database(
             exc, operation=operation, message=message, service=SERVICE_NAME
         )
@@ -915,6 +1363,19 @@ class QuotasService:
     def _unexpected_error(
         exc: Exception, *, operation: str, message: str
     ) -> ServiceError:
+        """Преобразует непредвиденное исключение в ошибку сервиса.
+
+        Дополнительно пишет исключение в лог с названием операции и типом ошибки.
+
+        Args:
+            exc: Исходное исключение.
+            operation: Название операции, во время которой возникла ошибка.
+            message: Сообщение для лога и создаваемой ошибки сервиса.
+
+        Returns:
+            Ошибка сервисного уровня с контекстом исходного исключения.
+        """
+
         logger.exception(
             message,
             extra={"operation": operation, "error_type": exc.__class__.__name__},
@@ -933,6 +1394,22 @@ class QuotasService:
         message: str,
         metadata: Mapping[str, Any] | None = None,
     ) -> None:
+        """Безопасно записывает событие квоты в аудит.
+
+        Если actor_id равен None, записывает системное событие. Иначе записывает
+        пользовательское событие от имени actor_id. Ошибки аудита не пробрасываются
+        выше.
+
+        Args:
+            actor_id: Идентификатор пользователя, выполняющего операцию. Если None,
+                событие считается системным.
+            user_id: Идентификатор пользователя, чья квота затронута.
+            action: Действие аудита.
+            entity_id: Идентификатор сущности квоты, если доступен.
+            message: Сообщение события аудита.
+            metadata: Дополнительные метаданные события.
+        """
+
         try:
             if actor_id is None:
                 await self.audit_service.log_system_event(
@@ -968,6 +1445,19 @@ class QuotasService:
 
 
 def _quota_snapshot(quota: UserQuota) -> dict[str, Any]:
+    """Создает снимок квоты пользователя.
+
+    Рассчитывает доступный объем хранилища, процент использования и признак
+    заполненности хранилища.
+
+    Args:
+        quota: ORM-модель квоты пользователя.
+
+    Returns:
+        Словарь с лимитами, счетчиками использования, расчетными полями и
+        временными метками квоты.
+    """
+
     storage_limit = int(quota.storage_limit_bytes)
     storage_used = int(quota.storage_used_bytes)
     available_storage = max(storage_limit - storage_used, 0)
@@ -996,10 +1486,28 @@ def _quota_snapshot(quota: UserQuota) -> dict[str, Any]:
 
 
 def _quota_read(snapshot: Mapping[str, Any]) -> UserQuotaRead:
+    """Преобразует снимок квоты в схему ответа.
+
+    Args:
+        snapshot: Снимок квоты пользователя.
+
+    Returns:
+        Схема чтения квоты пользователя.
+    """
+
     return UserQuotaRead.model_validate(dict(snapshot))
 
 
 def _usage_read(snapshot: Mapping[str, Any]) -> QuotaUsageRead:
+    """Преобразует снимок квоты в схему использования ресурсов.
+
+    Args:
+        snapshot: Снимок квоты пользователя.
+
+    Returns:
+        Схема текущего использования ресурсов пользователя.
+    """
+
     return QuotaUsageRead.model_validate(
         {
             "user_id": snapshot["user_id"],
@@ -1019,6 +1527,24 @@ def _usage_read(snapshot: Mapping[str, Any]) -> QuotaUsageRead:
 def _check_response(
     snapshot: Mapping[str, Any], resource_type: QuotaResourceType, requested_amount: int
 ) -> QuotaCheckResponse:
+    """Формирует результат проверки квоты.
+
+    Определяет лимит и текущее использование ресурса. Если лимит отсутствует,
+    разрешает операцию. Если лимит задан, сравнивает requested_amount с
+    доступным остатком.
+
+    Args:
+        snapshot: Снимок квоты пользователя.
+        resource_type: Тип проверяемого ресурса.
+        requested_amount: Запрошенный объем ресурса.
+
+    Returns:
+        Результат проверки квоты.
+
+    Raises:
+        ValidationServiceError: Если тип ресурса не поддерживается.
+    """
+
     limit, used = _resource_limit_and_used(snapshot, resource_type)
     if limit is None:
         return QuotaCheckResponse(
@@ -1051,6 +1577,20 @@ def _check_response(
 def _resource_limit_and_used(
     snapshot: Mapping[str, Any], resource_type: QuotaResourceType
 ) -> tuple[int | None, int]:
+    """Возвращает лимит и текущее использование ресурса.
+
+    Args:
+        snapshot: Снимок квоты пользователя.
+        resource_type: Тип ресурса квоты.
+
+    Returns:
+        Кортеж из лимита ресурса и текущего использования. Лимит может быть
+        None, если ресурс не ограничен.
+
+    Raises:
+        ValidationServiceError: Если тип ресурса не поддерживается.
+    """
+
     if resource_type == QuotaResourceType.STORAGE_BYTES:
         return int(snapshot["storage_limit_bytes"]), int(snapshot["storage_used_bytes"])
     if resource_type == QuotaResourceType.FILE_COUNT:
@@ -1073,10 +1613,28 @@ def _resource_limit_and_used(
 
 
 def _optional_int(value: Any) -> int | None:
+    """Преобразует значение в int или None.
+
+    Args:
+        value: Значение для преобразования.
+
+    Returns:
+        None, если value равен None, иначе int(value).
+    """
+
     return None if value is None else int(value)
 
 
 def _audit_quota(snapshot: Mapping[str, Any]) -> dict[str, Any]:
+    """Формирует метаданные квоты для аудита.
+
+    Args:
+        snapshot: Снимок квоты пользователя.
+
+    Returns:
+        Словарь с основными лимитами, счетчиками и расчетными полями квоты.
+    """
+
     return {
         "id": str(snapshot["id"]),
         "user_id": str(snapshot["user_id"]),
@@ -1098,6 +1656,16 @@ def get_quotas_service(
     uow_factory: UnitOfWorkFactory | None = None,
     audit_service: AuditService | None = None,
 ) -> QuotasService:
+    """Создает экземпляр сервиса квот.
+
+    Args:
+        uow_factory: Фабрика Unit of Work для нового экземпляра сервиса.
+        audit_service: Сервис аудита для нового экземпляра сервиса.
+
+    Returns:
+        Экземпляр QuotasService.
+    """
+
     return QuotasService(uow_factory=uow_factory, audit_service=audit_service)
 
 

@@ -1,3 +1,14 @@
+"""Сервис управления ролями LocalCloud.
+
+Модуль содержит бизнес-логику для работы с ролями, системными ролями и
+назначениями ролей пользователям. Сервис не зависит от FastAPI напрямую:
+все операции с хранилищем выполняются через UnitOfWork и репозиторий ролей,
+а наружу возвращаются DTO из `schemas.roles`.
+
+Сервис также записывает события аудита для операций создания, обновления,
+активации, деактивации, назначения и снятия ролей.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -36,7 +47,17 @@ REPOSITORY_PAGE_LIMIT = 1000
 
 
 class RolesService:
-    """Business service for LocalCloud roles and user role assignments."""
+    """Бизнес-сервис для ролей LocalCloud и назначений ролей пользователям.
+
+    Сервис инкапсулирует операции создания, обновления, получения,
+    активации, деактивации и назначения ролей. Все обращения к базе данных
+    выполняются через UnitOfWork, а события значимых изменений по возможности
+    записываются в аудит.
+
+    Attributes:
+        uow_factory: Фабрика UnitOfWork для создания транзакционных контекстов.
+        audit_service: Сервис аудита для записи событий ролей.
+    """
 
     def __init__(
         self,
@@ -44,13 +65,29 @@ class RolesService:
         uow_factory: UnitOfWorkFactory | None = None,
         audit_service: AuditService | None = None,
     ) -> None:
+        """Инициализирует сервис ролей.
+
+        Args:
+            uow_factory: Фабрика UnitOfWork. Если не передана, создаётся
+                стандартная фабрика через `create_unit_of_work_factory()`.
+            audit_service: Сервис аудита. Если не передан, создаётся сервис
+                аудита с той же фабрикой UnitOfWork.
+        """
+
         self.uow_factory = uow_factory or create_unit_of_work_factory()
         self.audit_service = audit_service or get_audit_service(
             uow_factory=self.uow_factory,
         )
 
     async def ensure_system_roles(self) -> list[RoleRead]:
-        """Create required system roles when they are missing."""
+        """Создаёт обязательные системные роли, если они отсутствуют.
+
+        Returns:
+            Список системных ролей после проверки и возможного создания.
+
+        Raises:
+            ServiceError: Если системные роли не удалось инициализировать.
+        """
 
         operation = "ensure_system_roles"
         snapshots: list[dict[str, Any]] = []
@@ -91,7 +128,19 @@ class RolesService:
         data: RoleCreate,
         actor_id: UUID | None = None,
     ) -> RoleRead:
-        """Create a new role."""
+        """Создаёт новую роль.
+
+        Args:
+            data: Данные создаваемой роли.
+            actor_id: Идентификатор пользователя, выполняющего операцию. Если
+                не передан, событие аудита записывается как системное.
+
+        Returns:
+            DTO созданной роли.
+
+        Raises:
+            ServiceError: Если роль не удалось создать.
+        """
 
         operation = "create_role"
         snapshot: dict[str, Any] = {}
@@ -145,7 +194,22 @@ class RolesService:
         data: RoleUpdate,
         actor_id: UUID | None = None,
     ) -> RoleRead:
-        """Update an existing role."""
+        """Обновляет существующую роль.
+
+        Args:
+            role_id: Идентификатор обновляемой роли.
+            data: Данные для частичного обновления роли.
+            actor_id: Идентификатор пользователя, выполняющего операцию. Если
+                не передан, событие аудита записывается как системное.
+
+        Returns:
+            DTO обновлённой роли. Если в `data` нет полей для обновления,
+            возвращается текущая роль.
+
+        Raises:
+            ConflictServiceError: Если новое имя или код роли уже заняты.
+            ServiceError: Если роль не удалось обновить.
+        """
 
         operation = "update_role"
         values = data.model_dump(exclude_unset=True)
@@ -210,7 +274,17 @@ class RolesService:
             ) from exc
 
     async def get_role(self, role_id: UUID) -> RoleRead:
-        """Return a role by id."""
+        """Возвращает роль по идентификатору.
+
+        Args:
+            role_id: Идентификатор роли.
+
+        Returns:
+            DTO найденной роли.
+
+        Raises:
+            ServiceError: Если роль не найдена или её не удалось получить.
+        """
 
         operation = "get_role"
         role_read: RoleRead | None = None
@@ -244,7 +318,17 @@ class RolesService:
             ) from exc
 
     async def get_role_by_name(self, name: str) -> RoleRead:
-        """Return a role by technical name."""
+        """Возвращает роль по техническому имени.
+
+        Args:
+            name: Техническое имя роли.
+
+        Returns:
+            DTO найденной роли.
+
+        Raises:
+            ServiceError: Если роль не найдена или её не удалось получить.
+        """
 
         operation = "get_role_by_name"
         role_read: RoleRead | None = None
@@ -278,7 +362,17 @@ class RolesService:
             ) from exc
 
     async def get_role_by_code(self, code: str | SystemRole) -> RoleRead:
-        """Return a role by stable code."""
+        """Возвращает роль по стабильному коду.
+
+        Args:
+            code: Код роли или значение `SystemRole`.
+
+        Returns:
+            DTO найденной роли.
+
+        Raises:
+            ServiceError: Если роль не найдена или её не удалось получить.
+        """
 
         operation = "get_role_by_code"
         role_read: RoleRead | None = None
@@ -312,12 +406,28 @@ class RolesService:
             ) from exc
 
     async def get_admin_role(self) -> RoleRead:
-        """Return the system administrator role."""
+        """Возвращает системную роль администратора.
+
+        Returns:
+            DTO роли администратора.
+
+        Raises:
+            ServiceError: Если роль администратора не найдена или её не удалось
+                получить.
+        """
 
         return await self.get_role_by_code(SystemRole.ADMIN)
 
     async def get_default_user_role(self) -> RoleRead:
-        """Return the default system user role."""
+        """Возвращает системную роль пользователя по умолчанию.
+
+        Returns:
+            DTO роли пользователя по умолчанию.
+
+        Raises:
+            ServiceError: Если роль пользователя не найдена или её не удалось
+                получить.
+        """
 
         return await self.get_role_by_code(SystemRole.USER)
 
@@ -331,7 +441,23 @@ class RolesService:
         search: str | None = None,
         order_by_name: bool = True,
     ) -> PageResponse[RoleListItem]:
-        """Return roles with filtering and API pagination metadata."""
+        """Возвращает список ролей с фильтрацией и метаданными пагинации.
+
+        Args:
+            offset: Смещение первой записи.
+            limit: Максимальное количество ролей на странице.
+            only_active: Если задано, фильтрует роли по признаку активности.
+            only_system: Если задано, фильтрует роли по признаку системности.
+            search: Поисковая строка для фильтрации ролей.
+            order_by_name: Нужно ли сортировать роли по имени.
+
+        Returns:
+            Страница ролей с метаданными пагинации.
+
+        Raises:
+            ValidationServiceError: Если параметры пагинации некорректны.
+            ServiceError: Если список ролей не удалось получить.
+        """
 
         operation = "list_roles"
         self._validate_pagination(offset=offset, limit=limit)
@@ -380,7 +506,19 @@ class RolesService:
         role_id: UUID,
         actor_id: UUID | None = None,
     ) -> RoleRead:
-        """Activate a role."""
+        """Активирует роль.
+
+        Args:
+            role_id: Идентификатор активируемой роли.
+            actor_id: Идентификатор пользователя, выполняющего операцию. Если
+                не передан, событие аудита записывается как системное.
+
+        Returns:
+            DTO активированной роли.
+
+        Raises:
+            ServiceError: Если роль не удалось активировать.
+        """
 
         operation = "activate_role"
         snapshot: dict[str, Any] = {}
@@ -420,7 +558,19 @@ class RolesService:
         role_id: UUID,
         actor_id: UUID | None = None,
     ) -> RoleRead:
-        """Deactivate a non-system role."""
+        """Деактивирует несистемную роль.
+
+        Args:
+            role_id: Идентификатор деактивируемой роли.
+            actor_id: Идентификатор пользователя, выполняющего операцию. Если
+                не передан, событие аудита записывается как системное.
+
+        Returns:
+            DTO деактивированной роли.
+
+        Raises:
+            ServiceError: Если роль не удалось деактивировать.
+        """
 
         operation = "deactivate_role"
         snapshot: dict[str, Any] = {}
@@ -466,7 +616,20 @@ class RolesService:
         code: str | SystemRole | None = None,
         exclude_role_id: UUID | None = None,
     ) -> bool:
-        """Check whether a role exists by name or code."""
+        """Проверяет существование роли по имени или коду.
+
+        Args:
+            name: Техническое имя роли для проверки.
+            code: Код роли или значение `SystemRole` для проверки.
+            exclude_role_id: Идентификатор роли, которую нужно исключить из
+                проверки уникальности.
+
+        Returns:
+            `True`, если роль с указанным именем или кодом существует.
+
+        Raises:
+            ServiceError: Если проверку существования роли не удалось выполнить.
+        """
 
         operation = "role_exists"
         result = False
@@ -499,7 +662,22 @@ class RolesService:
         data: RoleAssignRequest,
         actor_id: UUID | None = None,
     ) -> UserRoleRead:
-        """Assign a role to a user."""
+        """Назначает роль пользователю.
+
+        Args:
+            data: Данные назначения роли пользователю.
+            actor_id: Идентификатор пользователя, выполняющего назначение.
+                Если не передан, используется `data.assigned_by`.
+
+        Returns:
+            DTO созданного или существующего назначения роли.
+
+        Raises:
+            ConflictServiceError: Если роль неактивна.
+            ValidationServiceError: Если не передан идентификатор роли или код
+                роли.
+            ServiceError: Если роль не удалось назначить.
+        """
 
         operation = "assign_role"
         assigned_by = actor_id or data.assigned_by
@@ -582,7 +760,22 @@ class RolesService:
         data: RoleRemoveRequest,
         actor_id: UUID | None = None,
     ) -> bool:
-        """Remove a role assignment from a user."""
+        """Снимает назначение роли с пользователя.
+
+        Args:
+            data: Данные снятия роли с пользователя.
+            actor_id: Идентификатор пользователя, выполняющего операцию. Если
+                не передан, событие аудита записывается как системное.
+
+        Returns:
+            `True`, если назначение было удалено. `False`, если такого
+            назначения не было.
+
+        Raises:
+            ValidationServiceError: Если не передан идентификатор роли или код
+                роли.
+            ServiceError: Если роль не удалось снять.
+        """
 
         operation = "remove_role"
         role_snapshot: dict[str, Any] = {}
@@ -642,7 +835,21 @@ class RolesService:
         role_codes: Sequence[str | SystemRole],
         actor_id: UUID | None = None,
     ) -> list[UserRoleRead]:
-        """Replace all user roles by role codes."""
+        """Заменяет все роли пользователя набором ролей по кодам.
+
+        Args:
+            user_id: Идентификатор пользователя.
+            role_codes: Последовательность кодов ролей или значений
+                `SystemRole`, которые должны остаться назначенными пользователю.
+            actor_id: Идентификатор пользователя, выполняющего операцию.
+
+        Returns:
+            Список актуальных назначений ролей пользователя после замены.
+
+        Raises:
+            ValidationServiceError: Если список `role_codes` пуст.
+            ServiceError: Если роли пользователя не удалось заменить.
+        """
 
         operation = "replace_user_roles"
         if not role_codes:
@@ -715,7 +922,19 @@ class RolesService:
         *,
         actor_id: UUID | None = None,
     ) -> int:
-        """Remove all role assignments from a user."""
+        """Удаляет все назначения ролей пользователя.
+
+        Args:
+            user_id: Идентификатор пользователя.
+            actor_id: Идентификатор пользователя, выполняющего операцию. Если
+                не передан, событие аудита записывается как системное.
+
+        Returns:
+            Количество удалённых назначений ролей.
+
+        Raises:
+            ServiceError: Если роли пользователя не удалось очистить.
+        """
 
         operation = "clear_user_roles"
         removed_count = 0
@@ -763,7 +982,18 @@ class RolesService:
         user_id: UUID,
         role_code: str | SystemRole,
     ) -> bool:
-        """Check whether a user has an active role with the given code."""
+        """Проверяет наличие активной роли у пользователя.
+
+        Args:
+            user_id: Идентификатор пользователя.
+            role_code: Код роли или значение `SystemRole`.
+
+        Returns:
+            `True`, если у пользователя есть активная роль с указанным кодом.
+
+        Raises:
+            ServiceError: Если проверку роли пользователя не удалось выполнить.
+        """
 
         operation = "user_has_role"
         result = False
@@ -797,7 +1027,18 @@ class RolesService:
         *,
         only_active_roles: bool = True,
     ) -> list[RoleListItem]:
-        """Return user roles."""
+        """Возвращает роли пользователя.
+
+        Args:
+            user_id: Идентификатор пользователя.
+            only_active_roles: Если `True`, возвращает только активные роли.
+
+        Returns:
+            Список ролей пользователя.
+
+        Raises:
+            ServiceError: Если роли пользователя не удалось получить.
+        """
 
         operation = "get_user_roles"
         role_items: list[RoleListItem] | None = None
@@ -840,7 +1081,18 @@ class RolesService:
         *,
         only_active_roles: bool = True,
     ) -> list[str]:
-        """Return user role codes."""
+        """Возвращает коды ролей пользователя.
+
+        Args:
+            user_id: Идентификатор пользователя.
+            only_active_roles: Если `True`, учитывает только активные роли.
+
+        Returns:
+            Отсортированный список кодов ролей пользователя.
+
+        Raises:
+            ServiceError: Если коды ролей пользователя не удалось получить.
+        """
 
         operation = "get_user_role_codes"
         role_codes: list[str] = []
@@ -869,7 +1121,18 @@ class RolesService:
             ) from exc
 
     async def get_user_role_assignments(self, user_id: UUID) -> list[UserRoleRead]:
-        """Return user role assignment records."""
+        """Возвращает записи назначений ролей пользователя.
+
+        Args:
+            user_id: Идентификатор пользователя.
+
+        Returns:
+            Список назначений ролей пользователя с вложенной информацией о
+            ролях, если она доступна.
+
+        Raises:
+            ServiceError: Если назначения ролей пользователя не удалось получить.
+        """
 
         operation = "get_user_role_assignments"
         assignment_items: list[UserRoleRead] | None = None
@@ -926,6 +1189,19 @@ class RolesService:
         search: str | None,
         order_by_name: bool,
     ) -> list[dict[str, Any]]:
+        """Собирает снимки ролей из репозитория постранично.
+
+        Args:
+            uow: Активный UnitOfWork с репозиторием ролей.
+            only_active: Фильтр по активности роли.
+            only_system: Фильтр по системности роли.
+            search: Поисковая строка для фильтрации ролей.
+            order_by_name: Нужно ли сортировать роли по имени.
+
+        Returns:
+            Список словарных снимков ролей.
+        """
+
         snapshots: list[dict[str, Any]] = []
         offset = 0
 
@@ -954,6 +1230,23 @@ class RolesService:
         role_code: str | SystemRole | None,
         operation: str,
     ) -> Role:
+        """Находит роль по идентификатору или коду.
+
+        Args:
+            uow: Активный UnitOfWork с репозиторием ролей.
+            role_id: Идентификатор роли.
+            role_code: Код роли или значение `SystemRole`.
+            operation: Название операции сервиса для деталей ошибки.
+
+        Returns:
+            Найденная ORM-модель роли.
+
+        Raises:
+            ValidationServiceError: Если не переданы ни `role_id`, ни
+                `role_code`.
+            ServiceError: Если роль не удалось получить через репозиторий.
+        """
+
         if role_id is not None:
             return await uow.roles.get_required_role_by_id(role_id)
         if role_code is not None:
@@ -973,6 +1266,19 @@ class RolesService:
         name: str,
         exclude_role_id: UUID,
     ) -> None:
+        """Проверяет уникальность имени роли при обновлении.
+
+        Args:
+            uow: Активный UnitOfWork с репозиторием ролей.
+            name: Новое техническое имя роли.
+            exclude_role_id: Идентификатор обновляемой роли, которую нужно
+                исключить из проверки.
+
+        Raises:
+            ConflictServiceError: Если другая роль с таким именем уже
+                существует.
+        """
+
         if await uow.roles.role_exists(name=name, exclude_role_id=exclude_role_id):
             raise ConflictServiceError(
                 "Роль с таким name уже существует.",
@@ -990,6 +1296,18 @@ class RolesService:
         code: str | SystemRole,
         exclude_role_id: UUID,
     ) -> None:
+        """Проверяет уникальность кода роли при обновлении.
+
+        Args:
+            uow: Активный UnitOfWork с репозиторием ролей.
+            code: Новый код роли или значение `SystemRole`.
+            exclude_role_id: Идентификатор обновляемой роли, которую нужно
+                исключить из проверки.
+
+        Raises:
+            ConflictServiceError: Если другая роль с таким кодом уже существует.
+        """
+
         if await uow.roles.role_exists(code=code, exclude_role_id=exclude_role_id):
             raise ConflictServiceError(
                 "Роль с таким code уже существует.",
@@ -1010,6 +1328,21 @@ class RolesService:
         metadata: Mapping[str, Any] | None = None,
         resource_type: AuditResourceType = AuditResourceType.ROLE,
     ) -> None:
+        """Безопасно записывает пользовательское или системное событие аудита.
+
+        Ошибки аудита не прерывают основную бизнес-операцию: они логируются как
+        предупреждения.
+
+        Args:
+            actor_id: Идентификатор пользователя-инициатора. Если `None`,
+                записывается системное событие.
+            action: Аудит-действие.
+            entity_id: Идентификатор сущности, связанной с событием.
+            message: Сообщение события аудита.
+            metadata: Дополнительные данные события аудита.
+            resource_type: Тип ресурса, связанного с событием.
+        """
+
         try:
             if actor_id is None:
                 await self.audit_service.log_system_event(
@@ -1033,7 +1366,7 @@ class RolesService:
             )
         except Exception as exc:
             logger.warning(
-                "Failed to write audit event for roles service.",
+                "Не удалось записать событие аудита для сервиса ролей.",
                 extra={
                     "action": action.value,
                     "entity_id": str(entity_id) if entity_id else None,
@@ -1050,6 +1383,17 @@ class RolesService:
         message: str,
         metadata: Mapping[str, Any] | None = None,
     ) -> None:
+        """Безопасно записывает системное событие аудита для ролей.
+
+        Ошибки аудита не прерывают основную бизнес-операцию: они логируются как
+        предупреждения.
+
+        Args:
+            action: Аудит-действие.
+            message: Сообщение события аудита.
+            metadata: Дополнительные данные события аудита.
+        """
+
         try:
             await self.audit_service.log_system_event(
                 action=action,
@@ -1060,7 +1404,7 @@ class RolesService:
             )
         except Exception as exc:
             logger.warning(
-                "Failed to write system audit event for roles service.",
+                "Не удалось записать системное событие аудита для сервиса ролей.",
                 extra={
                     "action": action.value,
                     "error_type": exc.__class__.__name__,
@@ -1070,6 +1414,17 @@ class RolesService:
 
     @staticmethod
     def _validate_pagination(*, offset: int, limit: int) -> None:
+        """Проверяет параметры пагинации.
+
+        Args:
+            offset: Смещение первой записи.
+            limit: Максимальное количество записей на странице.
+
+        Raises:
+            ValidationServiceError: Если `offset` отрицательный, `limit`
+                меньше 1 или `limit` превышает `MAX_PAGE_LIMIT`.
+        """
+
         if offset < 0:
             raise ValidationServiceError(
                 "offset не может быть отрицательным.",
@@ -1106,6 +1461,17 @@ class RolesService:
         operation: str,
         message: str,
     ) -> ServiceError:
+        """Преобразует ошибку базы данных в сервисную ошибку ролей.
+
+        Args:
+            exc: Исходная ошибка базы данных.
+            operation: Название операции сервиса.
+            message: Сообщение для итоговой сервисной ошибки.
+
+        Returns:
+            Сервисная ошибка, соответствующая ошибке базы данных.
+        """
+
         return service_error_from_database(
             exc,
             operation=operation,
@@ -1120,6 +1486,17 @@ class RolesService:
         operation: str,
         message: str,
     ) -> ServiceError:
+        """Логирует непредвиденную ошибку и преобразует её в `ServiceError`.
+
+        Args:
+            exc: Исходное исключение.
+            operation: Название операции сервиса.
+            message: Сообщение для логирования и итоговой сервисной ошибки.
+
+        Returns:
+            Сервисная ошибка, созданная из исходного исключения.
+        """
+
         logger.exception(
             message,
             extra={
@@ -1136,6 +1513,15 @@ class RolesService:
 
 
 def _role_snapshot(role: Role) -> dict[str, Any]:
+    """Создаёт словарный снимок ORM-модели роли.
+
+    Args:
+        role: ORM-модель роли.
+
+    Returns:
+        Словарь с полями роли, подходящий для построения DTO.
+    """
+
     return {
         "id": role.id,
         "name": role.name,
@@ -1153,6 +1539,19 @@ def _assignment_snapshot(
     *,
     role_snapshot: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """Создаёт словарный снимок назначения роли пользователю.
+
+    Args:
+        assignment: ORM-модель назначения роли.
+        role_snapshot: Опциональный заранее подготовленный снимок роли. Если не
+            передан, функция пытается использовать загруженную связь
+            `assignment.role`.
+
+    Returns:
+        Словарь с данными назначения роли и вложенным payload роли, если роль
+        доступна.
+    """
+
     role_payload: Mapping[str, Any] | None = role_snapshot
     if role_payload is None:
         loaded_role = getattr(assignment, "role", None)
@@ -1169,18 +1568,54 @@ def _assignment_snapshot(
 
 
 def _role_read(snapshot: Mapping[str, Any]) -> RoleRead:
+    """Создаёт DTO чтения роли из словарного снимка.
+
+    Args:
+        snapshot: Словарный снимок роли.
+
+    Returns:
+        DTO `RoleRead`.
+    """
+
     return RoleRead.model_validate(dict(snapshot))
 
 
 def _role_list_item(snapshot: Mapping[str, Any]) -> RoleListItem:
+    """Создаёт DTO элемента списка ролей из словарного снимка.
+
+    Args:
+        snapshot: Словарный снимок роли.
+
+    Returns:
+        DTO `RoleListItem`.
+    """
+
     return RoleListItem.model_validate(_role_list_payload(snapshot))
 
 
 def _user_role_read(snapshot: Mapping[str, Any]) -> UserRoleRead:
+    """Создаёт DTO назначения роли из словарного снимка.
+
+    Args:
+        snapshot: Словарный снимок назначения роли.
+
+    Returns:
+        DTO `UserRoleRead`.
+    """
+
     return UserRoleRead.model_validate(dict(snapshot))
 
 
 def _role_list_payload(snapshot: Mapping[str, Any]) -> dict[str, Any]:
+    """Создаёт компактный payload роли для списков и вложенных DTO.
+
+    Args:
+        snapshot: Словарный снимок роли.
+
+    Returns:
+        Словарь с основными полями роли.
+    """
+
     return {
         "id": snapshot["id"],
         "name": snapshot["name"],
@@ -1192,6 +1627,15 @@ def _role_list_payload(snapshot: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _audit_role(snapshot: Mapping[str, Any]) -> dict[str, Any]:
+    """Создаёт payload роли для записи в аудит.
+
+    Args:
+        snapshot: Словарный снимок роли.
+
+    Returns:
+        JSON-сериализуемый словарь с ключевыми полями роли.
+    """
+
     return {
         "id": str(snapshot["id"]),
         "name": snapshot["name"],
@@ -1202,6 +1646,15 @@ def _audit_role(snapshot: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _normalize_role_code(code: str | SystemRole) -> str:
+    """Нормализует код роли.
+
+    Args:
+        code: Строковый код роли или значение `SystemRole`.
+
+    Returns:
+        Код роли в нижнем регистре без пробелов по краям.
+    """
+
     value = code.value if isinstance(code, Enum) else code
     return str(value).strip().lower()
 
@@ -1211,6 +1664,18 @@ def get_roles_service(
     uow_factory: UnitOfWorkFactory | None = None,
     audit_service: AuditService | None = None,
 ) -> RolesService:
+    """Создаёт экземпляр сервиса ролей.
+
+    Args:
+        uow_factory: Фабрика UnitOfWork. Если не передана, сервис создаст
+            стандартную фабрику самостоятельно.
+        audit_service: Сервис аудита. Если не передан, будет создан сервис
+            аудита с той же фабрикой UnitOfWork.
+
+    Returns:
+        Экземпляр `RolesService`.
+    """
+
     return RolesService(
         uow_factory=uow_factory,
         audit_service=audit_service,

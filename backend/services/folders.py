@@ -1,3 +1,24 @@
+"""
+Сервис управления папками файловой системы.
+
+Модуль содержит бизнес-логику работы с папками, которые представлены как
+сущности поверх узлов FileSystemNode. Он отвечает за создание, чтение,
+обновление, переименование, перемещение, удаление, восстановление, окончательное
+удаление, поиск и подсчет папок, а также за постановку фоновой задачи на
+создание архива папки.
+
+Основные операции модуля:
+    * Проверка прав доступа пользователя к папкам и родительским узлам.
+    * Создание папок в корне или внутри других папок.
+    * Получение метаданных папки и содержимого папки.
+    * Постраничная выдача и поиск папок.
+    * Обновление метаданных, переименование и перемещение папок.
+    * Мягкое удаление, восстановление и окончательное удаление папок.
+    * Создание фоновой задачи для архивации папки.
+    * Формирование снимков ORM-моделей для безопасной сериализации.
+    * Запись успешных операций с папками в аудит.
+"""
+
 from __future__ import annotations
 
 from enum import Enum
@@ -56,7 +77,17 @@ ALLOWED_FOLDER_SORT_FIELDS: set[str] = {
 
 
 class FoldersService:
-    """Business service for folders as entities on top of FileSystemNode."""
+    """Сервис бизнес-логики для работы с папками файловой системы.
+
+    Управляет папками как отдельными сущностями, связанными с FileSystemNode.
+    Сервис проверяет права доступа, выполняет операции через Unit of Work,
+    преобразует ORM-модели в схемы ответа и записывает события аудита.
+
+    Attributes:
+        uow_factory: Фабрика Unit of Work для работы с базой данных.
+        access_service: Сервис проверки доступа к узлам файловой системы.
+        audit_service: Сервис записи событий аудита.
+    """
 
     def __init__(
         self,
@@ -65,6 +96,20 @@ class FoldersService:
         access_service: AccessService | None = None,
         audit_service: AuditService | None = None,
     ) -> None:
+        """Инициализирует сервис папок.
+
+        Если зависимости не переданы явно, создает их через стандартные фабрики
+        и функции получения сервисов.
+
+        Args:
+            uow_factory: Фабрика Unit of Work. Если не передана, создается
+                стандартная фабрика.
+            access_service: Сервис проверки доступа. Если не передан, создается
+                стандартный сервис доступа.
+            audit_service: Сервис аудита. Если не передан, создается стандартный
+                сервис аудита.
+        """
+
         self.uow_factory = uow_factory or create_unit_of_work_factory()
         self.access_service = access_service or get_access_service(
             uow_factory=self.uow_factory
@@ -81,6 +126,31 @@ class FoldersService:
         actor_id: UUID | None = None,
         visibility: NodeVisibility = NodeVisibility.PRIVATE,
     ) -> FolderRead:
+        """Создает новую папку.
+
+        Если указан parent_id, проверяет доступ актера к родительской папке и
+        соответствие владельца. Если parent_id не указан, разрешает создание
+        корневой папки только владельцу.
+
+        Args:
+            data: Данные для создания папки.
+            owner_id: Идентификатор владельца создаваемой папки.
+            actor_id: Идентификатор пользователя, выполняющего операцию. Если None,
+                используется owner_id.
+            visibility: Видимость создаваемого узла файловой системы.
+
+        Returns:
+            Данные созданной папки.
+
+        Raises:
+            PermissionServiceError: Если пользователь не может создать корневую
+                папку или не имеет прав на родительскую папку.
+            ValidationServiceError: Если родительский узел не является папкой или
+                принадлежит другому владельцу.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         operation = "create_folder"
         snapshot: dict[str, Any] | None = None
         resolved_actor_id = actor_id or owner_id
@@ -161,6 +231,28 @@ class FoldersService:
         allow_deleted: bool = False,
         allow_public: bool = True,
     ) -> FolderRead:
+        """Возвращает папку по идентификатору узла.
+
+        Проверяет доступ пользователя к узлу, убеждается, что узел является папкой,
+        и загружает связанную сущность Folder.
+
+        Args:
+            node_id: Идентификатор узла папки.
+            user_id: Идентификатор пользователя. Может быть None для публичного
+                доступа, если allow_public равен True.
+            allow_deleted: Нужно ли разрешать получение удаленных папок.
+            allow_public: Нужно ли разрешать доступ к публичным папкам без владельца.
+
+        Returns:
+            Данные найденной папки.
+
+        Raises:
+            PermissionServiceError: Если у пользователя нет доступа к папке.
+            ValidationServiceError: Если узел не является папкой.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         operation = "get_folder"
         snapshot: dict[str, Any] | None = None
 
@@ -207,6 +299,32 @@ class FoldersService:
         sort_by: str = "name",
         sort_desc: bool = False,
     ) -> FolderContentRead:
+        """Возвращает содержимое папки.
+
+        Загружает данные папки, хлебные крошки и дочерние узлы. Дочерние элементы
+        сортируются и затем обрезаются по limit и offset.
+
+        Args:
+            node_id: Идентификатор узла папки.
+            user_id: Идентификатор пользователя, запрашивающего содержимое.
+            include_deleted: Нужно ли включать удаленные узлы.
+            limit: Максимальное количество дочерних элементов в ответе.
+            offset: Смещение для постраничной выдачи.
+            sort_by: Поле сортировки дочерних узлов.
+            sort_desc: Нужно ли сортировать по убыванию.
+
+        Returns:
+            Содержимое папки: данные папки, хлебные крошки, элементы текущей страницы
+            и общее количество дочерних узлов.
+
+        Raises:
+            PermissionServiceError: Если у пользователя нет доступа к папке.
+            ValidationServiceError: Если узел не является папкой или поле сортировки
+                не поддерживается.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         operation = "get_folder_content"
         content: FolderContentRead | None = None
 
@@ -278,6 +396,37 @@ class FoldersService:
         sort_by: str = "name",
         sort_desc: bool = False,
     ) -> PageResponse[FolderListItem]:
+        """Возвращает список папок с постраничной выдачей.
+
+        Если указан parent_id, возвращает папки внутри родительской папки после
+        проверки доступа к ней. Если parent_id не указан, возвращает корневые папки
+        владельца и требует, чтобы пользователь был владельцем.
+
+        Args:
+            owner_id: Идентификатор владельца папок. Если None, используется user_id
+                или владелец родительской папки.
+            parent_id: Идентификатор родительской папки. Если None, выбираются
+                корневые папки.
+            user_id: Идентификатор пользователя, выполняющего запрос.
+            include_deleted: Нужно ли включать удаленные папки.
+            limit: Максимальное количество элементов в ответе.
+            offset: Смещение для постраничной выдачи.
+            sort_by: Поле сортировки папок.
+            sort_desc: Нужно ли сортировать по убыванию.
+
+        Returns:
+            Страница со списком папок и метаданными пагинации.
+
+        Raises:
+            PermissionServiceError: Если пользователь не может просматривать
+                корневые папки указанного владельца.
+            ValidationServiceError: Если родительский узел не является папкой,
+                владелец не совпадает с родительской папкой или поле сортировки
+                не поддерживается.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         operation = "list_folders"
         page: PageResponse[FolderListItem] | None = None
 
@@ -353,6 +502,26 @@ class FoldersService:
         *,
         actor_id: UUID,
     ) -> FolderRead:
+        """Обновляет метаданные папки.
+
+        Проверяет право записи к папке и обновляет редактируемые поля метаданных,
+        такие как описание и цвет.
+
+        Args:
+            node_id: Идентификатор узла папки.
+            data: Новые данные метаданных папки.
+            actor_id: Идентификатор пользователя, выполняющего обновление.
+
+        Returns:
+            Обновленные данные папки.
+
+        Raises:
+            PermissionServiceError: Если у пользователя нет права записи.
+            ValidationServiceError: Если узел не является папкой.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         operation = "update_folder"
         snapshot: dict[str, Any] | None = None
 
@@ -405,6 +574,26 @@ class FoldersService:
         new_name: str,
         actor_id: UUID,
     ) -> FolderRead:
+        """Переименовывает папку.
+
+        Выполняет общую мутацию папки через _mutate_folder, проверяя право записи
+        и записывая событие аудита после успешного переименования.
+
+        Args:
+            node_id: Идентификатор узла папки.
+            new_name: Новое имя папки.
+            actor_id: Идентификатор пользователя, выполняющего переименование.
+
+        Returns:
+            Обновленные данные папки.
+
+        Raises:
+            PermissionServiceError: Если у пользователя нет права записи.
+            ValidationServiceError: Если узел не является папкой.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         return await self._mutate_folder(
             node_id=node_id,
             actor_id=actor_id,
@@ -428,6 +617,29 @@ class FoldersService:
         target_parent_id: UUID | None,
         actor_id: UUID,
     ) -> FolderRead:
+        """Перемещает папку в новую родительскую папку или в корень.
+
+        Проверяет право записи к перемещаемой папке. Если target_parent_id указан,
+        дополнительно проверяет право записи к целевой родительской папке.
+
+        Args:
+            node_id: Идентификатор узла перемещаемой папки.
+            target_parent_id: Идентификатор новой родительской папки. Если None,
+                папка перемещается в корень.
+            actor_id: Идентификатор пользователя, выполняющего перемещение.
+
+        Returns:
+            Обновленные данные перемещенной папки.
+
+        Raises:
+            PermissionServiceError: Если у пользователя нет права записи к папке
+                или целевой родительской папке.
+            ValidationServiceError: Если исходный или целевой узел не является
+                папкой.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         operation = "move_folder"
         snapshot: dict[str, Any] | None = None
 
@@ -488,6 +700,26 @@ class FoldersService:
         actor_id: UUID,
         recursive: bool = True,
     ) -> FolderRead:
+        """Мягко удаляет папку.
+
+        Перемещает папку в корзину через репозиторий. При recursive=True удаление
+        применяется рекурсивно к дочерним узлам.
+
+        Args:
+            node_id: Идентификатор узла папки.
+            actor_id: Идентификатор пользователя, выполняющего удаление.
+            recursive: Нужно ли удалять вложенные элементы рекурсивно.
+
+        Returns:
+            Данные удаленной папки.
+
+        Raises:
+            PermissionServiceError: Если у пользователя нет права удаления.
+            ValidationServiceError: Если узел не является папкой.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         return await self._mutate_folder(
             node_id=node_id,
             actor_id=actor_id,
@@ -511,6 +743,26 @@ class FoldersService:
         actor_id: UUID,
         recursive: bool = True,
     ) -> FolderRead:
+        """Восстанавливает мягко удаленную папку.
+
+        Восстанавливает папку через репозиторий. При recursive=True восстановление
+        применяется рекурсивно к дочерним узлам.
+
+        Args:
+            node_id: Идентификатор узла папки.
+            actor_id: Идентификатор пользователя, выполняющего восстановление.
+            recursive: Нужно ли восстанавливать вложенные элементы рекурсивно.
+
+        Returns:
+            Данные восстановленной папки.
+
+        Raises:
+            PermissionServiceError: Если у пользователя нет права на операцию.
+            ValidationServiceError: Если узел не является папкой.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         return await self._mutate_folder(
             node_id=node_id,
             actor_id=actor_id,
@@ -529,6 +781,22 @@ class FoldersService:
         )
 
     async def purge_folder(self, node_id: UUID, *, actor_id: UUID) -> None:
+        """Окончательно удаляет папку.
+
+        Проверяет право управления папкой, загружает снимок папки для аудита,
+        помечает узел как окончательно удаленный и записывает событие аудита.
+
+        Args:
+            node_id: Идентификатор узла папки.
+            actor_id: Идентификатор пользователя, выполняющего окончательное удаление.
+
+        Raises:
+            PermissionServiceError: Если у пользователя нет права управления.
+            ValidationServiceError: Если узел не является папкой.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         operation = "purge_folder"
         snapshot: dict[str, Any] | None = None
 
@@ -584,6 +852,37 @@ class FoldersService:
         sort_by: str = "name",
         sort_desc: bool = False,
     ) -> PageResponse[FolderListItem]:
+        """Ищет папки по фильтрам.
+
+        Поддерживает поиск по текстовому запросу, владельцу, родительской папке,
+        признаку удаления и цвету. Для поиска в корне требует, чтобы пользователь
+        искал только собственные папки.
+
+        Args:
+            query: Поисковая строка. Может быть None.
+            user_id: Идентификатор пользователя, выполняющего поиск.
+            owner_id: Идентификатор владельца папок. Если None, используется user_id
+                или владелец родительской папки.
+            parent_id: Идентификатор родительской папки для ограничения поиска.
+            include_deleted: Нужно ли включать удаленные папки.
+            color: Фильтр по цвету папки.
+            limit: Максимальное количество элементов в ответе.
+            offset: Смещение для постраничной выдачи.
+            sort_by: Поле сортировки.
+            sort_desc: Нужно ли сортировать по убыванию.
+
+        Returns:
+            Страница найденных папок и метаданные пагинации.
+
+        Raises:
+            PermissionServiceError: Если поиск выполняется без владельца или
+                пользователь пытается искать чужие корневые папки.
+            ValidationServiceError: Если parent_id указывает не на папку или поле
+                сортировки не поддерживается.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         operation = "search_folders"
         page: PageResponse[FolderListItem] | None = None
 
@@ -651,6 +950,25 @@ class FoldersService:
         *,
         actor_id: UUID,
     ) -> FolderArchiveResponse:
+        """Создает фоновую задачу на архивацию папки.
+
+        Проверяет право скачивания папки, создает задачу типа CREATE_FOLDER_ARCHIVE
+        и сохраняет основные параметры архива в result_data задачи.
+
+        Args:
+            data: Данные запроса на создание архива папки.
+            actor_id: Идентификатор пользователя, запрашивающего архив.
+
+        Returns:
+            Ответ с идентификатором созданной задачи и ее текущим статусом.
+
+        Raises:
+            PermissionServiceError: Если у пользователя нет права скачивания папки.
+            ValidationServiceError: Если указанный узел не является папкой.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         operation = "request_folder_archive"
         task_snapshot: dict[str, Any] | None = None
         folder_snapshot: dict[str, Any] | None = None
@@ -720,6 +1038,25 @@ class FoldersService:
         user_id: UUID,
         include_deleted: bool = False,
     ) -> int:
+        """Возвращает количество папок пользователя.
+
+        Разрешает подсчет только собственных папок пользователя.
+
+        Args:
+            owner_id: Идентификатор владельца папок.
+            user_id: Идентификатор пользователя, выполняющего запрос.
+            include_deleted: Нужно ли учитывать удаленные папки.
+
+        Returns:
+            Количество папок пользователя.
+
+        Raises:
+            PermissionServiceError: Если пользователь пытается считать папки другого
+                владельца.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         operation = "count_folders"
         count: int | None = None
 
@@ -768,6 +1105,32 @@ class FoldersService:
         mutate: Any,
         allow_deleted: bool = False,
     ) -> FolderRead:
+        """Выполняет общую мутацию папки.
+
+        Используется для операций, которые имеют одинаковый шаблон: проверка доступа,
+        проверка типа узла, выполнение функции изменения, commit и запись события
+        аудита.
+
+        Args:
+            node_id: Идентификатор узла папки.
+            actor_id: Идентификатор пользователя, выполняющего операцию.
+            access_action: Действие доступа, которое нужно проверить.
+            audit_action: Действие аудита для записи после успешной операции.
+            message: Сообщение для аудита и ошибок.
+            operation: Название операции для контекста ошибок.
+            mutate: Асинхронная функция, выполняющая изменение через Unit of Work.
+            allow_deleted: Нужно ли разрешать доступ к удаленной папке.
+
+        Returns:
+            Данные измененной папки.
+
+        Raises:
+            PermissionServiceError: Если у пользователя нет нужного права доступа.
+            ValidationServiceError: Если узел не является папкой.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         snapshot: dict[str, Any] | None = None
 
         try:
@@ -816,6 +1179,24 @@ class FoldersService:
         sort_by: FolderSortField,
         sort_direction: NodeSortDirection,
     ) -> list[Folder]:
+        """Загружает все папки пользователя батчами.
+
+        Последовательно запрашивает страницы из репозитория до тех пор, пока размер
+        очередного батча не станет меньше REPOSITORY_PAGE_LIMIT.
+
+        Args:
+            uow: Unit of Work с репозиторием папок.
+            owner_id: Идентификатор владельца папок.
+            parent_id: Идентификатор родительской папки. Если None, загружаются
+                корневые папки.
+            include_deleted: Нужно ли включать удаленные папки.
+            sort_by: Поле сортировки папок.
+            sort_direction: Направление сортировки.
+
+        Returns:
+            Полный список загруженных папок.
+        """
+
         folders: list[Folder] = []
         offset = 0
 
@@ -846,6 +1227,25 @@ class FoldersService:
         sort_by: FolderSortField,
         sort_direction: NodeSortDirection,
     ) -> list[Folder]:
+        """Ищет все папки пользователя батчами.
+
+        Последовательно запрашивает страницы результатов поиска до тех пор, пока
+        размер очередного батча не станет меньше REPOSITORY_PAGE_LIMIT.
+
+        Args:
+            uow: Unit of Work с репозиторием папок.
+            owner_id: Идентификатор владельца папок.
+            query: Поисковая строка. Может быть None.
+            parent_id: Идентификатор родительской папки для ограничения поиска.
+            include_deleted: Нужно ли включать удаленные папки.
+            color: Фильтр по цвету папки.
+            sort_by: Поле сортировки папок.
+            sort_direction: Направление сортировки.
+
+        Returns:
+            Полный список найденных папок.
+        """
+
         folders: list[Folder] = []
         offset = 0
 
@@ -875,6 +1275,22 @@ class FoldersService:
         sort_by: str,
         sort_direction: NodeSortDirection,
     ) -> list[FileSystemNode]:
+        """Загружает все дочерние узлы папки батчами.
+
+        Последовательно запрашивает дочерние узлы из репозитория до тех пор, пока
+        размер очередного батча не станет меньше REPOSITORY_PAGE_LIMIT.
+
+        Args:
+            uow: Unit of Work с репозиторием узлов.
+            parent_id: Идентификатор родительской папки.
+            include_deleted: Нужно ли включать удаленные узлы.
+            sort_by: Поле сортировки узлов.
+            sort_direction: Направление сортировки.
+
+        Returns:
+            Полный список дочерних узлов.
+        """
+
         nodes: list[FileSystemNode] = []
         offset = 0
 
@@ -901,6 +1317,19 @@ class FoldersService:
         message: str,
         metadata: dict[str, Any] | None = None,
     ) -> None:
+        """Безопасно записывает событие папки в аудит.
+
+        Ошибки записи аудита не пробрасываются выше, чтобы не ломать основную
+        операцию с папкой. При ошибке пишет предупреждение в лог.
+
+        Args:
+            user_id: Идентификатор пользователя, связанного с событием.
+            action: Действие аудита.
+            snapshot: Снимок папки, на основе которого формируются метаданные.
+            message: Сообщение события аудита.
+            metadata: Дополнительные метаданные события.
+        """
+
         try:
             merged_metadata = _audit_metadata(snapshot)
             if metadata:
@@ -932,6 +1361,17 @@ class FoldersService:
         operation: str,
         message: str,
     ) -> ServiceError:
+        """Преобразует ошибку базы данных в ошибку сервиса папок.
+
+        Args:
+            exc: Исходная ошибка базы данных.
+            operation: Название операции, во время которой возникла ошибка.
+            message: Сообщение для создаваемой ошибки сервиса.
+
+        Returns:
+            Ошибка сервисного уровня с контекстом сервиса папок.
+        """
+
         return service_error_from_database(
             exc,
             operation=operation,
@@ -946,6 +1386,19 @@ class FoldersService:
         operation: str,
         message: str,
     ) -> ServiceError:
+        """Преобразует непредвиденное исключение в ошибку сервиса.
+
+        Дополнительно пишет исключение в лог с названием операции и типом ошибки.
+
+        Args:
+            exc: Исходное исключение.
+            operation: Название операции, во время которой возникла ошибка.
+            message: Сообщение для лога и создаваемой ошибки сервиса.
+
+        Returns:
+            Ошибка сервисного уровня с контекстом исходного исключения.
+        """
+
         logger.exception(
             message,
             extra={"operation": operation, "error_type": exc.__class__.__name__},
@@ -959,6 +1412,16 @@ class FoldersService:
 
 
 def _folder_snapshot(folder: Folder) -> dict[str, Any]:
+    """Создает снимок метаданных папки.
+
+    Args:
+        folder: ORM-модель папки.
+
+    Returns:
+        Словарь с идентификаторами папки и узла, описанием, цветом, временными
+        метками и снимком связанного узла, если он загружен.
+    """
+
     return {
         "id": folder.id,
         "node_id": folder.node_id,
@@ -971,6 +1434,16 @@ def _folder_snapshot(folder: Folder) -> dict[str, Any]:
 
 
 def _node_snapshot(node: FileSystemNode) -> dict[str, Any]:
+    """Создает снимок метаданных узла файловой системы.
+
+    Args:
+        node: ORM-модель узла файловой системы.
+
+    Returns:
+        Словарь с идентификаторами, именем, типом, видимостью, путем, глубиной,
+        авторами изменений, флагом удаления и временными метками узла.
+    """
+
     return {
         "id": node.id,
         "owner_id": node.owner_id,
@@ -991,6 +1464,15 @@ def _node_snapshot(node: FileSystemNode) -> dict[str, Any]:
 
 
 def _task_snapshot(task: BackgroundTask) -> dict[str, Any]:
+    """Создает краткий снимок фоновой задачи.
+
+    Args:
+        task: ORM-модель фоновой задачи.
+
+    Returns:
+        Словарь с идентификатором задачи и ее статусом.
+    """
+
     return {
         "id": task.id,
         "status": task.status,
@@ -1003,6 +1485,17 @@ def _folders_page(
     limit: int,
     offset: int,
 ) -> PageResponse[FolderListItem]:
+    """Формирует страницу папок из полного списка.
+
+    Args:
+        folders: Полный список папок.
+        limit: Максимальное количество элементов на странице.
+        offset: Смещение начала страницы.
+
+    Returns:
+        Ответ со списком элементов текущей страницы и метаданными пагинации.
+    """
+
     page_folders = folders[offset : offset + limit]
     items = [
         FolderListItem.model_validate(_folder_snapshot(folder))
@@ -1020,6 +1513,16 @@ def _folders_page(
 
 
 def _ensure_folder_node(node: FileSystemNode, *, operation: str) -> None:
+    """Проверяет, что узел файловой системы является папкой.
+
+    Args:
+        node: Узел файловой системы для проверки.
+        operation: Название операции для контекста ошибок.
+
+    Raises:
+        ValidationServiceError: Если узел не является папкой.
+    """
+
     if node.node_type == NodeType.FOLDER:
         return
     raise ValidationServiceError(
@@ -1036,6 +1539,18 @@ def _ensure_folder_node(node: FileSystemNode, *, operation: str) -> None:
 
 
 def _normalize_folder_sort_by(sort_by: str) -> FolderSortField:
+    """Нормализует и проверяет поле сортировки папок.
+
+    Args:
+        sort_by: Исходное поле сортировки.
+
+    Returns:
+        Нормализованное поле сортировки папок.
+
+    Raises:
+        ValidationServiceError: Если поле сортировки не поддерживается.
+    """
+
     normalized = sort_by.strip().lower()
     if normalized not in ALLOWED_FOLDER_SORT_FIELDS:
         raise ValidationServiceError(
@@ -1052,6 +1567,18 @@ def _normalize_folder_sort_by(sort_by: str) -> FolderSortField:
 
 
 def _normalize_node_sort_by(sort_by: str) -> str:
+    """Нормализует и проверяет поле сортировки узлов.
+
+    Args:
+        sort_by: Исходное поле сортировки.
+
+    Returns:
+        Нормализованное поле сортировки узлов.
+
+    Raises:
+        ValidationServiceError: Если поле сортировки не поддерживается.
+    """
+
     normalized = sort_by.strip().lower()
     allowed = {"name", "created_at", "updated_at", "deleted_at", "depth", "node_type"}
     if normalized not in allowed:
@@ -1066,10 +1593,28 @@ def _normalize_node_sort_by(sort_by: str) -> str:
 
 
 def _sort_direction(sort_desc: bool) -> NodeSortDirection:
+    """Возвращает направление сортировки по флагу убывания.
+
+    Args:
+        sort_desc: Нужно ли сортировать по убыванию.
+
+    Returns:
+        "desc", если sort_desc равен True, иначе "asc".
+    """
+
     return "desc" if sort_desc else "asc"
 
 
 def _audit_metadata(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Формирует метаданные папки для аудита.
+
+    Args:
+        snapshot: Снимок папки, возможно содержащий вложенный снимок узла.
+
+    Returns:
+        Словарь с JSON-совместимыми метаданными папки и связанного узла.
+    """
+
     node = snapshot.get("node")
     metadata: dict[str, Any] = {
         "folder_id": _jsonable(snapshot.get("id")),
@@ -1091,6 +1636,18 @@ def _audit_metadata(snapshot: dict[str, Any]) -> dict[str, Any]:
 
 
 def _jsonable(value: Any) -> Any:
+    """Преобразует значение в JSON-совместимый формат.
+
+    Поддерживает примитивы, UUID и Enum. Для остальных объектов возвращает
+    строковое представление.
+
+    Args:
+        value: Значение для преобразования.
+
+    Returns:
+        JSON-совместимое представление значения.
+    """
+
     if value is None or isinstance(value, str | int | float | bool):
         return value
     if isinstance(value, UUID):
@@ -1101,6 +1658,15 @@ def _jsonable(value: Any) -> Any:
 
 
 def _empty_result_error(operation: str) -> ServiceError:
+    """Создает ошибку пустого результата сервисной операции.
+
+    Args:
+        operation: Название операции, завершившейся без результата.
+
+    Returns:
+        Ошибка сервиса с описанием отсутствующего результата.
+    """
+
     return ServiceError(
         "Service operation finished without a result.",
         service=SERVICE_NAME,
@@ -1117,6 +1683,21 @@ def get_folders_service(
     access_service: AccessService | None = None,
     audit_service: AuditService | None = None,
 ) -> FoldersService:
+    """Возвращает экземпляр сервиса папок.
+
+    Если передана хотя бы одна зависимость, создает новый экземпляр сервиса с
+    указанными зависимостями. Если зависимости не переданы, возвращает
+    глобальный singleton-экземпляр, создавая его при первом обращении.
+
+    Args:
+        uow_factory: Фабрика Unit of Work для нового экземпляра сервиса.
+        access_service: Сервис доступа для нового экземпляра сервиса.
+        audit_service: Сервис аудита для нового экземпляра сервиса.
+
+    Returns:
+        Экземпляр FoldersService.
+    """
+
     if (
         uow_factory is not None
         or access_service is not None

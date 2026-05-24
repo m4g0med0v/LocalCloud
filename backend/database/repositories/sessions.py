@@ -3,8 +3,9 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from typing import Any, cast
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, String, func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1471,6 +1472,92 @@ class UploadSessionsRepository(BaseRepository[UploadSession]):
         """
 
         return await self.count(UploadSession.status == status)
+
+    async def search_user_sessions(
+        self,
+        *,
+        user_id: uuid.UUID,
+        parent_node_id: uuid.UUID | None = None,
+        status: UploadSessionStatus | None = None,
+        include_terminal: bool = True,
+        filename_query: str | None = None,
+        created_from: datetime | None = None,
+        created_to: datetime | None = None,
+        expires_before: datetime | None = None,
+        sort_by: str = "created_at",
+        sort_desc: bool = True,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> list[UploadSession]:
+        """Search user upload sessions with service-level query filters."""
+
+        self._validate_pagination(offset=offset, limit=limit)
+        statement = select(UploadSession).where(UploadSession.user_id == user_id)
+
+        if parent_node_id is not None:
+            statement = statement.where(UploadSession.parent_node_id == parent_node_id)
+        if status is not None:
+            statement = statement.where(UploadSession.status == status)
+        elif not include_terminal:
+            statement = statement.where(UploadSession.status.notin_(self._terminal_statuses()))
+        if filename_query:
+            statement = statement.where(
+                func.lower(UploadSession.file_name).contains(filename_query.strip().lower())
+            )
+        if created_from is not None:
+            statement = statement.where(UploadSession.created_at >= created_from)
+        if created_to is not None:
+            statement = statement.where(UploadSession.created_at <= created_to)
+        if expires_before is not None:
+            statement = statement.where(UploadSession.expires_at <= expires_before)
+
+        sortable: dict[str, Any] = {
+            "created_at": UploadSession.created_at,
+            "expires_at": UploadSession.expires_at,
+            "file_name": func.lower(UploadSession.file_name),
+            "status": cast(String, UploadSession.status),
+        }
+        column = sortable.get(sort_by.strip().lower(), UploadSession.created_at)
+        statement = statement.order_by(column.desc() if sort_desc else column.asc())
+        statement = statement.offset(offset).limit(limit)
+        return await self.scalars_all(statement, operation="search_user_sessions")
+
+    async def count_user_sessions_filtered(
+        self,
+        *,
+        user_id: uuid.UUID,
+        parent_node_id: uuid.UUID | None = None,
+        status: UploadSessionStatus | None = None,
+        include_terminal: bool = True,
+        filename_query: str | None = None,
+        created_from: datetime | None = None,
+        created_to: datetime | None = None,
+        expires_before: datetime | None = None,
+    ) -> int:
+        """Count user upload sessions with service-level query filters."""
+
+        statement = select(func.count()).select_from(UploadSession).where(
+            UploadSession.user_id == user_id
+        )
+        if parent_node_id is not None:
+            statement = statement.where(UploadSession.parent_node_id == parent_node_id)
+        if status is not None:
+            statement = statement.where(UploadSession.status == status)
+        elif not include_terminal:
+            statement = statement.where(UploadSession.status.notin_(self._terminal_statuses()))
+        if filename_query:
+            statement = statement.where(
+                func.lower(UploadSession.file_name).contains(filename_query.strip().lower())
+            )
+        if created_from is not None:
+            statement = statement.where(UploadSession.created_at >= created_from)
+        if created_to is not None:
+            statement = statement.where(UploadSession.created_at <= created_to)
+        if expires_before is not None:
+            statement = statement.where(UploadSession.expires_at <= expires_before)
+
+        result = await self.session.execute(statement)
+        return int(result.scalar_one() or 0)
 
     # ------------------------------------------------------------------
     # Внутренние методы

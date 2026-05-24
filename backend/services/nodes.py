@@ -1,3 +1,25 @@
+"""
+Сервис управления узлами файловой системы.
+
+Модуль содержит бизнес-логику для общих операций над иерархией файловой
+системы. Узлы могут представлять файлы, папки и другие поддерживаемые типы
+FileSystemNode. Сервис отвечает за создание, чтение, поиск, обновление,
+переименование, перемещение, изменение видимости, удаление, восстановление,
+окончательное удаление, построение хлебных крошек и дерева узлов.
+
+Основные операции модуля:
+    * Проверка прав доступа к узлам файловой системы.
+    * Создание корневых и вложенных узлов.
+    * Получение одного узла, списка узлов и результатов поиска.
+    * Фильтрация узлов по удалению, видимости и диапазонам дат.
+    * Переименование, перемещение и изменение видимости узлов.
+    * Мягкое удаление, восстановление и окончательное удаление узлов.
+    * Построение хлебных крошек и дерева файловой системы.
+    * Подсчет пользовательских узлов, файлов и папок.
+    * Формирование снимков ORM-моделей для сериализации.
+    * Запись успешных операций с узлами в аудит.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Iterable
@@ -57,7 +79,18 @@ ALLOWED_SORT_FIELDS: set[str] = {
 
 
 class NodesService:
-    """Business service for common filesystem hierarchy operations."""
+    """Сервис бизнес-логики для операций с иерархией файловой системы.
+
+    Управляет общими операциями над FileSystemNode: созданием, чтением,
+    поиском, обновлением, перемещением, удалением, восстановлением и построением
+    древовидных представлений. Сервис проверяет права доступа, выполняет
+    изменения через Unit of Work и записывает события аудита.
+
+    Attributes:
+        uow_factory: Фабрика Unit of Work для работы с базой данных.
+        access_service: Сервис проверки доступа к узлам файловой системы.
+        audit_service: Сервис записи событий аудита.
+    """
 
     def __init__(
         self,
@@ -66,6 +99,20 @@ class NodesService:
         access_service: AccessService | None = None,
         audit_service: AuditService | None = None,
     ) -> None:
+        """Инициализирует сервис узлов файловой системы.
+
+        Если зависимости не переданы явно, создает их через стандартные фабрики
+        и функции получения сервисов.
+
+        Args:
+            uow_factory: Фабрика Unit of Work. Если None, создается стандартная
+                фабрика.
+            access_service: Сервис проверки доступа. Если None, создается
+                стандартный сервис доступа.
+            audit_service: Сервис аудита. Если None, создается стандартный сервис
+                аудита.
+        """
+
         self.uow_factory = uow_factory or create_unit_of_work_factory()
         self.access_service = access_service or get_access_service(
             uow_factory=self.uow_factory
@@ -81,6 +128,30 @@ class NodesService:
         owner_id: UUID,
         actor_id: UUID | None = None,
     ) -> NodeOperationResponse:
+        """Создает новый узел файловой системы.
+
+        Если указан parent_id, проверяет право записи к родительскому узлу и
+        соответствие владельца. Если parent_id не указан, разрешает создание
+        корневого узла только владельцу.
+
+        Args:
+            data: Данные для создания узла.
+            owner_id: Идентификатор владельца создаваемого узла.
+            actor_id: Идентификатор пользователя, выполняющего операцию. Если None,
+                используется owner_id.
+
+        Returns:
+            Ответ операции с созданным узлом и сообщением об успехе.
+
+        Raises:
+            PermissionServiceError: Если пользователь не может создать корневой узел
+                или не имеет права записи к родительскому узлу.
+            ValidationServiceError: Если родительский узел принадлежит другому
+                владельцу.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         operation = "create_node"
         created_snapshot: dict[str, Any] | None = None
         resolved_actor_id = actor_id or owner_id
@@ -159,6 +230,27 @@ class NodesService:
         allow_deleted: bool = False,
         allow_public: bool = True,
     ) -> NodeRead:
+        """Возвращает узел файловой системы по идентификатору.
+
+        Проверяет доступ пользователя к узлу и возвращает его сериализованное
+        представление.
+
+        Args:
+            node_id: Идентификатор узла файловой системы.
+            user_id: Идентификатор пользователя. Может быть None для публичного
+                доступа, если allow_public равен True.
+            allow_deleted: Нужно ли разрешать получение удаленного узла.
+            allow_public: Нужно ли разрешать доступ к публичным узлам.
+
+        Returns:
+            Данные найденного узла.
+
+        Raises:
+            PermissionServiceError: Если у пользователя нет доступа к узлу.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         operation = "get_node"
         snapshot: dict[str, Any] | None = None
 
@@ -195,6 +287,30 @@ class NodesService:
         *,
         user_id: UUID | None,
     ) -> PageResponse[NodeListItem]:
+        """Возвращает список узлов файловой системы.
+
+        Загружает корневые узлы владельца или дочерние узлы указанного parent_id.
+        После загрузки дополнительно фильтрует результат по параметрам запроса
+        и формирует страницу ответа.
+
+        Args:
+            params: Параметры списка, включая владельца, родителя, тип узла,
+                сортировку, пагинацию и фильтры.
+            user_id: Идентификатор пользователя, выполняющего запрос.
+
+        Returns:
+            Страница узлов и метаданные пагинации.
+
+        Raises:
+            PermissionServiceError: Если пользователь не может просматривать
+                корневые узлы указанного владельца или запрос выполняется без
+                аутентифицированного владельца.
+            ValidationServiceError: Если владелец не совпадает с владельцем
+                родительского узла или поле сортировки не поддерживается.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         operation = "list_nodes"
         page: PageResponse[NodeListItem] | None = None
 
@@ -270,6 +386,29 @@ class NodesService:
         *,
         user_id: UUID | None,
     ) -> PageResponse[NodeListItem]:
+        """Ищет узлы файловой системы.
+
+        Выполняет поиск по параметрам запроса в пределах владельца или родительского
+        узла. Для поиска в корневой иерархии требует, чтобы пользователь искал
+        только собственные узлы.
+
+        Args:
+            params: Параметры поиска, включая строку запроса, владельца, родителя,
+                тип узла, видимость, сортировку, пагинацию и флаг удаленных узлов.
+            user_id: Идентификатор пользователя, выполняющего поиск.
+
+        Returns:
+            Страница найденных узлов и метаданные пагинации.
+
+        Raises:
+            PermissionServiceError: Если поиск выполняется без владельца или
+                пользователь пытается искать чужую корневую иерархию.
+            ValidationServiceError: Если владелец не совпадает с владельцем
+                родительского узла или поле сортировки не поддерживается.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         operation = "search_nodes"
         page: PageResponse[NodeListItem] | None = None
 
@@ -348,6 +487,30 @@ class NodesService:
         actor_id: UUID,
         recursive_visibility: bool = False,
     ) -> NodeOperationResponse:
+        """Обновляет узел файловой системы.
+
+        Может переименовать узел, переместить его в другого родителя и изменить
+        видимость. Для изменения имени и родителя проверяет право записи, а для
+        изменения видимости — право управления доступом.
+
+        Args:
+            node_id: Идентификатор обновляемого узла.
+            data: Данные обновления узла.
+            actor_id: Идентификатор пользователя, выполняющего обновление.
+            recursive_visibility: Нужно ли применять изменение видимости
+                рекурсивно к потомкам.
+
+        Returns:
+            Ответ операции с обновленным узлом и сообщением об успехе.
+
+        Raises:
+            PermissionServiceError: Если у пользователя нет нужного права доступа.
+            ValidationServiceError: Если поле сортировки или данные операции
+                некорректны на уровне нижележащих сервисов или репозиториев.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         operation = "update_node"
         snapshot: dict[str, Any] | None = None
         audit_action = AuditAction.NODE_MOVED
@@ -438,6 +601,25 @@ class NodesService:
         *,
         actor_id: UUID,
     ) -> NodeOperationResponse:
+        """Переименовывает узел файловой системы.
+
+        Выполняет общую мутацию узла через _mutate_node, проверяя право записи
+        и записывая событие аудита после успешного переименования.
+
+        Args:
+            node_id: Идентификатор переименовываемого узла.
+            data: Данные с новым именем узла.
+            actor_id: Идентификатор пользователя, выполняющего переименование.
+
+        Returns:
+            Ответ операции с переименованным узлом.
+
+        Raises:
+            PermissionServiceError: Если у пользователя нет права записи.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         return await self._mutate_node(
             node_id=node_id,
             actor_id=actor_id,
@@ -461,6 +643,26 @@ class NodesService:
         *,
         actor_id: UUID,
     ) -> NodeOperationResponse:
+        """Перемещает узел файловой системы.
+
+        Проверяет право записи к перемещаемому узлу. Если указан целевой родитель,
+        дополнительно проверяет право записи к целевому родительскому узлу.
+
+        Args:
+            node_id: Идентификатор перемещаемого узла.
+            data: Данные перемещения с целевым родительским узлом.
+            actor_id: Идентификатор пользователя, выполняющего перемещение.
+
+        Returns:
+            Ответ операции с перемещенным узлом.
+
+        Raises:
+            PermissionServiceError: Если у пользователя нет права записи к узлу
+                или целевому родителю.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         operation = "move_node"
         snapshot: dict[str, Any] | None = None
 
@@ -520,6 +722,26 @@ class NodesService:
         actor_id: UUID,
         recursive: bool = False,
     ) -> NodeOperationResponse:
+        """Обновляет видимость узла файловой системы.
+
+        Проверяет право управления доступом и применяет новую видимость к узлу.
+        При recursive=True изменение также применяется к дочерним узлам.
+
+        Args:
+            node_id: Идентификатор узла.
+            visibility: Новое значение видимости.
+            actor_id: Идентификатор пользователя, выполняющего операцию.
+            recursive: Нужно ли применять изменение рекурсивно.
+
+        Returns:
+            Ответ операции с обновленным узлом.
+
+        Raises:
+            PermissionServiceError: Если у пользователя нет права SHARE.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         return await self._mutate_node(
             node_id=node_id,
             actor_id=actor_id,
@@ -544,6 +766,25 @@ class NodesService:
         actor_id: UUID,
         recursive: bool = True,
     ) -> NodeOperationResponse:
+        """Мягко удаляет узел файловой системы.
+
+        Перемещает узел в корзину. При recursive=True удаление применяется
+        рекурсивно к дочерним узлам.
+
+        Args:
+            node_id: Идентификатор удаляемого узла.
+            actor_id: Идентификатор пользователя, выполняющего удаление.
+            recursive: Нужно ли удалять дочерние узлы рекурсивно.
+
+        Returns:
+            Ответ операции с удаленным узлом.
+
+        Raises:
+            PermissionServiceError: Если у пользователя нет права удаления.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         return await self._mutate_node(
             node_id=node_id,
             actor_id=actor_id,
@@ -567,6 +808,25 @@ class NodesService:
         actor_id: UUID,
         recursive: bool = True,
     ) -> NodeOperationResponse:
+        """Восстанавливает мягко удаленный узел файловой системы.
+
+        Восстанавливает удаленный узел. При recursive=True восстановление применяется
+        рекурсивно к дочерним узлам.
+
+        Args:
+            node_id: Идентификатор восстанавливаемого узла.
+            actor_id: Идентификатор пользователя, выполняющего восстановление.
+            recursive: Нужно ли восстанавливать дочерние узлы рекурсивно.
+
+        Returns:
+            Ответ операции с восстановленным узлом.
+
+        Raises:
+            PermissionServiceError: Если у пользователя нет нужного права доступа.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         return await self._mutate_node(
             node_id=node_id,
             actor_id=actor_id,
@@ -587,6 +847,25 @@ class NodesService:
     async def purge_node(
         self, node_id: UUID, *, actor_id: UUID
     ) -> NodeOperationResponse:
+        """Окончательно удаляет узел файловой системы.
+
+        Проверяет право управления узлом, сохраняет снимок для аудита, помечает
+        узел как окончательно удаленный и возвращает успешный ответ без данных узла.
+
+        Args:
+            node_id: Идентификатор окончательно удаляемого узла.
+            actor_id: Идентификатор пользователя, выполняющего окончательное
+                удаление.
+
+        Returns:
+            Ответ операции с success=True, node=None и сообщением об удалении.
+
+        Raises:
+            PermissionServiceError: Если у пользователя нет права управления.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         operation = "purge_node"
         snapshot: dict[str, Any] | None = None
 
@@ -637,6 +916,25 @@ class NodesService:
         user_id: UUID | None,
         allow_deleted: bool = False,
     ) -> list[NodeBreadcrumbItem]:
+        """Возвращает хлебные крошки для узла файловой системы.
+
+        Проверяет право чтения к узлу и загружает цепочку предков, включая сам узел.
+
+        Args:
+            node_id: Идентификатор узла, для которого строятся хлебные крошки.
+            user_id: Идентификатор пользователя, выполняющего запрос.
+            allow_deleted: Нужно ли разрешать построение хлебных крошек для
+                удаленного узла.
+
+        Returns:
+            Список элементов хлебных крошек от корня до указанного узла.
+
+        Raises:
+            PermissionServiceError: Если у пользователя нет права чтения.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         operation = "get_breadcrumbs"
         breadcrumbs: list[NodeBreadcrumbItem] | None = None
 
@@ -681,6 +979,25 @@ class NodesService:
         user_id: UUID | None,
         include_deleted: bool = False,
     ) -> NodeTreeItem:
+        """Возвращает дерево узлов от указанного корня.
+
+        Проверяет право чтения к корневому узлу, загружает всех потомков вместе
+        с корнем и строит вложенное дерево NodeTreeItem.
+
+        Args:
+            root_node_id: Идентификатор корневого узла дерева.
+            user_id: Идентификатор пользователя, выполняющего запрос.
+            include_deleted: Нужно ли включать удаленные узлы.
+
+        Returns:
+            Дерево файловой системы, начинающееся с root_node_id.
+
+        Raises:
+            PermissionServiceError: Если у пользователя нет права чтения.
+            ServiceError: Если корневой узел отсутствует в результате потомков,
+                произошла ошибка базы данных или непредвиденная ошибка сервиса.
+        """
+
         operation = "get_tree"
         tree: NodeTreeItem | None = None
 
@@ -723,6 +1040,26 @@ class NodesService:
         user_id: UUID,
         include_deleted: bool = False,
     ) -> dict[NodeType | str, int]:
+        """Возвращает количество узлов пользователя.
+
+        Считает общее количество узлов, количество файлов и количество папок.
+        Разрешает подсчет только для собственного owner_id пользователя.
+
+        Args:
+            owner_id: Идентификатор владельца узлов.
+            user_id: Идентификатор пользователя, выполняющего запрос.
+            include_deleted: Нужно ли учитывать удаленные узлы.
+
+        Returns:
+            Словарь с количеством всех узлов, файлов и папок.
+
+        Raises:
+            PermissionServiceError: Если пользователь пытается считать узлы другого
+                владельца.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         operation = "count_user_nodes"
         counts: dict[NodeType | str, int] | None = None
 
@@ -781,6 +1118,30 @@ class NodesService:
         operation: str,
         allow_deleted: bool = False,
     ) -> NodeOperationResponse:
+        """Выполняет общую мутацию узла файловой системы.
+
+        Используется для операций с одинаковым шаблоном: проверка доступа,
+        выполнение функции изменения, commit, запись аудита и формирование ответа.
+
+        Args:
+            node_id: Идентификатор изменяемого узла.
+            actor_id: Идентификатор пользователя, выполняющего операцию.
+            access_action: Действие доступа, которое нужно проверить.
+            audit_action: Действие аудита для записи после успешной операции.
+            message: Сообщение операции и текст ошибки.
+            mutate: Асинхронная функция изменения, принимающая Unit of Work.
+            operation: Название операции для контекста ошибок.
+            allow_deleted: Нужно ли разрешать доступ к удаленному узлу.
+
+        Returns:
+            Ответ операции с измененным узлом.
+
+        Raises:
+            PermissionServiceError: Если у пользователя нет нужного права доступа.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         snapshot: dict[str, Any] | None = None
 
         try:
@@ -825,6 +1186,24 @@ class NodesService:
         params: NodeQueryParams,
         owner_id: UUID,
     ) -> list[FileSystemNode]:
+        """Загружает узлы для операции списка батчами.
+
+        В зависимости от params.parent_id загружает либо корневые узлы владельца,
+        либо дочерние узлы указанного родителя. Читает данные страницами до тех пор,
+        пока очередной батч не станет меньше REPOSITORY_PAGE_LIMIT.
+
+        Args:
+            uow: Unit of Work с репозиторием узлов.
+            params: Параметры списка узлов.
+            owner_id: Идентификатор владельца узлов.
+
+        Returns:
+            Полный список загруженных узлов.
+
+        Raises:
+            ValidationServiceError: Если поле сортировки не поддерживается.
+        """
+
         sort_by = _normalize_sort_by(params.sort_by)
         sort_direction = _sort_direction(params.sort_desc)
         include_deleted = params.is_deleted is not False
@@ -865,6 +1244,23 @@ class NodesService:
         params: NodeSearchQuery,
         owner_id: UUID,
     ) -> list[FileSystemNode]:
+        """Загружает результаты поиска узлов батчами.
+
+        Последовательно запрашивает страницы результатов поиска из репозитория,
+        пока очередной батч не станет меньше REPOSITORY_PAGE_LIMIT.
+
+        Args:
+            uow: Unit of Work с репозиторием узлов.
+            params: Параметры поиска узлов.
+            owner_id: Идентификатор владельца узлов.
+
+        Returns:
+            Полный список найденных узлов.
+
+        Raises:
+            ValidationServiceError: Если поле сортировки не поддерживается.
+        """
+
         sort_by = _normalize_sort_by(params.sort_by)
         sort_direction = _sort_direction(params.sort_desc)
         nodes: list[FileSystemNode] = []
@@ -895,6 +1291,18 @@ class NodesService:
         snapshot: dict[str, Any],
         message: str,
     ) -> None:
+        """Безопасно записывает событие узла в аудит.
+
+        Ошибки записи аудита не пробрасываются выше, чтобы не ломать основную
+        операцию с узлом. При ошибке пишет предупреждение в лог.
+
+        Args:
+            user_id: Идентификатор пользователя, связанного с событием.
+            action: Действие аудита.
+            snapshot: Снимок узла, на основе которого формируются метаданные.
+            message: Сообщение события аудита.
+        """
+
         try:
             await self.audit_service.log_user_event(
                 user_id=user_id,
@@ -923,6 +1331,17 @@ class NodesService:
         operation: str,
         message: str,
     ) -> ServiceError:
+        """Преобразует ошибку базы данных в ошибку сервиса узлов.
+
+        Args:
+            exc: Исходная ошибка базы данных.
+            operation: Название операции, во время которой возникла ошибка.
+            message: Сообщение для создаваемой ошибки сервиса.
+
+        Returns:
+            Ошибка сервисного уровня с контекстом сервиса узлов.
+        """
+
         return service_error_from_database(
             exc,
             operation=operation,
@@ -937,6 +1356,19 @@ class NodesService:
         operation: str,
         message: str,
     ) -> ServiceError:
+        """Преобразует непредвиденное исключение в ошибку сервиса.
+
+        Дополнительно пишет исключение в лог с названием операции и типом ошибки.
+
+        Args:
+            exc: Исходное исключение.
+            operation: Название операции, во время которой возникла ошибка.
+            message: Сообщение для лога и создаваемой ошибки сервиса.
+
+        Returns:
+            Ошибка сервисного уровня с контекстом исходного исключения.
+        """
+
         logger.exception(
             message,
             extra={"operation": operation, "error_type": exc.__class__.__name__},
@@ -950,6 +1382,16 @@ class NodesService:
 
 
 def _node_snapshot(node: FileSystemNode) -> dict[str, Any]:
+    """Создает снимок метаданных узла файловой системы.
+
+    Args:
+        node: ORM-модель узла файловой системы.
+
+    Returns:
+        Словарь с идентификаторами, именем, типом, видимостью, путем, глубиной,
+        авторами изменений, признаком удаления и временными метками узла.
+    """
+
     return {
         "id": node.id,
         "owner_id": node.owner_id,
@@ -970,6 +1412,15 @@ def _node_snapshot(node: FileSystemNode) -> dict[str, Any]:
 
 
 def _breadcrumb_snapshot(node: FileSystemNode) -> dict[str, Any]:
+    """Создает краткий снимок узла для хлебных крошек.
+
+    Args:
+        node: ORM-модель узла файловой системы.
+
+    Returns:
+        Словарь с идентификатором, именем, типом, путем и глубиной узла.
+    """
+
     return {
         "id": node.id,
         "name": node.name,
@@ -984,6 +1435,16 @@ def _tree_snapshot(
     *,
     children: Iterable[NodeTreeItem] = (),
 ) -> dict[str, Any]:
+    """Создает снимок узла для древовидного представления.
+
+    Args:
+        node: ORM-модель узла файловой системы.
+        children: Дочерние элементы дерева.
+
+    Returns:
+        Словарь с данными узла и списком дочерних элементов.
+    """
+
     return {
         "id": node.id,
         "parent_id": node.parent_id,
@@ -999,6 +1460,16 @@ def _tree_snapshot(
 def _operation_response(
     snapshot: dict[str, Any], message: str
 ) -> NodeOperationResponse:
+    """Формирует стандартный ответ успешной операции над узлом.
+
+    Args:
+        snapshot: Снимок узла файловой системы.
+        message: Сообщение об успешной операции.
+
+    Returns:
+        Ответ операции с success=True, сериализованным узлом и сообщением.
+    """
+
     return NodeOperationResponse(
         success=True,
         node=NodeRead.model_validate(snapshot),
@@ -1012,6 +1483,17 @@ def _nodes_page(
     limit: int,
     offset: int,
 ) -> PageResponse[NodeListItem]:
+    """Формирует страницу узлов из полного списка.
+
+    Args:
+        nodes: Полный список узлов.
+        limit: Максимальное количество элементов на странице.
+        offset: Смещение начала страницы.
+
+    Returns:
+        Ответ со списком элементов текущей страницы и метаданными пагинации.
+    """
+
     page_nodes = nodes[offset : offset + limit]
     items = [NodeListItem.model_validate(_node_snapshot(node)) for node in page_nodes]
     return PageResponse(
@@ -1029,6 +1511,19 @@ def _filter_query_nodes(
     nodes: list[FileSystemNode],
     params: NodeQueryParams,
 ) -> list[FileSystemNode]:
+    """Фильтрует узлы для обычного списка.
+
+    Применяет фильтры по признаку удаления, видимости, дате создания и дате
+    обновления.
+
+    Args:
+        nodes: Список узлов для фильтрации.
+        params: Параметры фильтрации списка узлов.
+
+    Returns:
+        Список узлов, соответствующих фильтрам.
+    """
+
     return [
         node
         for node in nodes
@@ -1043,6 +1538,19 @@ def _filter_search_nodes(
     nodes: list[FileSystemNode],
     params: NodeSearchQuery,
 ) -> list[FileSystemNode]:
+    """Фильтрует найденные узлы.
+
+    Применяет фильтр по видимости и исключает удаленные узлы, если
+    include_deleted равен False.
+
+    Args:
+        nodes: Список найденных узлов.
+        params: Параметры поиска узлов.
+
+    Returns:
+        Список найденных узлов, соответствующих фильтрам.
+    """
+
     return [
         node
         for node in nodes
@@ -1052,6 +1560,17 @@ def _filter_search_nodes(
 
 
 def _matches_deleted(node: FileSystemNode, is_deleted: bool | None) -> bool:
+    """Проверяет соответствие узла фильтру удаления.
+
+    Args:
+        node: Узел файловой системы.
+        is_deleted: Ожидаемое состояние удаления. Если None, фильтр не
+            применяется.
+
+    Returns:
+        True, если узел соответствует фильтру удаления.
+    """
+
     if is_deleted is None:
         return True
     return bool(node.is_deleted) is is_deleted
@@ -1061,6 +1580,16 @@ def _matches_visibility(
     node: FileSystemNode,
     visibility: NodeVisibility | None,
 ) -> bool:
+    """Проверяет соответствие узла фильтру видимости.
+
+    Args:
+        node: Узел файловой системы.
+        visibility: Ожидаемая видимость. Если None, фильтр не применяется.
+
+    Returns:
+        True, если узел соответствует фильтру видимости.
+    """
+
     if visibility is None:
         return True
     return node.visibility == visibility
@@ -1071,6 +1600,20 @@ def _matches_range(
     start: datetime | None,
     end: datetime | None,
 ) -> bool:
+    """Проверяет попадание даты в указанный диапазон.
+
+    Если value равен None, совпадение возможно только при отсутствии обеих
+    границ диапазона. Все даты нормализуются к UTC перед сравнением.
+
+    Args:
+        value: Проверяемая дата.
+        start: Начало диапазона. Если None, нижняя граница не применяется.
+        end: Конец диапазона. Если None, верхняя граница не применяется.
+
+    Returns:
+        True, если значение попадает в диапазон.
+    """
+
     if value is None:
         return start is None and end is None
     normalized_value = _normalize_datetime(value)
@@ -1082,12 +1625,36 @@ def _matches_range(
 
 
 def _normalize_datetime(value: datetime) -> datetime:
+    """Нормализует дату и время к UTC.
+
+    Если значение не содержит timezone, считает его временем UTC. Если timezone
+    указан, переводит значение в UTC.
+
+    Args:
+        value: Дата и время для нормализации.
+
+    Returns:
+        Дата и время с timezone UTC.
+    """
+
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)
 
 
 def _normalize_sort_by(sort_by: str) -> NodeSortField:
+    """Нормализует и проверяет поле сортировки узлов.
+
+    Args:
+        sort_by: Исходное поле сортировки.
+
+    Returns:
+        Нормализованное поле сортировки узлов.
+
+    Raises:
+        ValidationServiceError: Если поле сортировки не поддерживается.
+    """
+
     normalized = sort_by.strip().lower()
     if normalized not in ALLOWED_SORT_FIELDS:
         raise ValidationServiceError(
@@ -1104,10 +1671,36 @@ def _normalize_sort_by(sort_by: str) -> NodeSortField:
 
 
 def _sort_direction(sort_desc: bool) -> NodeSortDirection:
+    """Возвращает направление сортировки по флагу убывания.
+
+    Args:
+        sort_desc: Нужно ли сортировать по убыванию.
+
+    Returns:
+        "desc", если sort_desc равен True, иначе "asc".
+    """
+
     return "desc" if sort_desc else "asc"
 
 
 def _build_tree(nodes: list[FileSystemNode], *, root_node_id: UUID) -> NodeTreeItem:
+    """Строит дерево узлов файловой системы.
+
+    Находит корневой узел, группирует остальные узлы по parent_id и рекурсивно
+    строит NodeTreeItem. Дочерние узлы сортируются по типу, имени и
+    идентификатору.
+
+    Args:
+        nodes: Список узлов, включающий корень и его потомков.
+        root_node_id: Идентификатор корневого узла дерева.
+
+    Returns:
+        Дерево узлов, начиная с root_node_id.
+
+    Raises:
+        ServiceError: Если корневой узел отсутствует в списке nodes.
+    """
+
     node_by_id = {node.id: node for node in nodes}
     root = node_by_id.get(root_node_id)
     if root is None:
@@ -1139,6 +1732,18 @@ def _build_tree(nodes: list[FileSystemNode], *, root_node_id: UUID) -> NodeTreeI
 
 
 def _audit_metadata(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Формирует метаданные узла для аудита.
+
+    Выбирает из снимка только поля, значимые для аудита, и преобразует значения
+    в JSON-совместимый формат.
+
+    Args:
+        snapshot: Снимок узла файловой системы.
+
+    Returns:
+        Словарь JSON-совместимых метаданных для аудита.
+    """
+
     return {
         key: _jsonable(value)
         for key, value in snapshot.items()
@@ -1158,6 +1763,18 @@ def _audit_metadata(snapshot: dict[str, Any]) -> dict[str, Any]:
 
 
 def _jsonable(value: Any) -> Any:
+    """Преобразует значение в JSON-совместимый формат.
+
+    Поддерживает примитивы, UUID, datetime и Enum. Для остальных объектов
+    возвращает строковое представление.
+
+    Args:
+        value: Значение для преобразования.
+
+    Returns:
+        JSON-совместимое представление значения.
+    """
+
     if value is None or isinstance(value, str | int | float | bool):
         return value
     if isinstance(value, UUID):
@@ -1170,6 +1787,15 @@ def _jsonable(value: Any) -> Any:
 
 
 def _empty_result_error(operation: str) -> ServiceError:
+    """Создает ошибку пустого результата сервисной операции.
+
+    Args:
+        operation: Название операции, завершившейся без результата.
+
+    Returns:
+        Ошибка сервиса с описанием отсутствующего результата.
+    """
+
     return ServiceError(
         "Service operation finished without a result.",
         service=SERVICE_NAME,
@@ -1186,6 +1812,21 @@ def get_nodes_service(
     access_service: AccessService | None = None,
     audit_service: AuditService | None = None,
 ) -> NodesService:
+    """Возвращает экземпляр сервиса узлов файловой системы.
+
+    Если передана хотя бы одна зависимость, создает новый экземпляр сервиса с
+    указанными зависимостями. Если зависимости не переданы, возвращает
+    глобальный singleton-экземпляр, создавая его при первом обращении.
+
+    Args:
+        uow_factory: Фабрика Unit of Work для нового экземпляра сервиса.
+        access_service: Сервис доступа для нового экземпляра сервиса.
+        audit_service: Сервис аудита для нового экземпляра сервиса.
+
+    Returns:
+        Экземпляр NodesService.
+    """
+
     if (
         uow_factory is not None
         or access_service is not None

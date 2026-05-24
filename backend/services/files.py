@@ -1,3 +1,16 @@
+"""Сервис управления файловыми метаданными LocalCloud.
+
+Модуль содержит бизнес-логику для создания файловых узлов, получения и
+обновления метаданных файлов, переименования, перемещения, мягкого удаления,
+восстановления, окончательной очистки, поиска файлов, управления версиями и
+состоянием preview.
+
+Сервис работает с метаданными и версиями файлов через UnitOfWork, проверяет
+доступ через `AccessService` и по возможности записывает audit-события через
+`AuditService`. Физическое содержимое объектов хранится во внешнем storage и
+здесь представлено только bucket/key метаданными.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Iterable
@@ -6,9 +19,6 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, cast
 from uuid import UUID
-
-from sqlalchemy import func, or_, select
-from sqlalchemy.orm import selectinload
 
 from core.logging import get_logger
 from database import DatabaseError, UnitOfWorkFactory, create_unit_of_work_factory
@@ -65,7 +75,23 @@ ALLOWED_FILE_SORT_FIELDS: set[str] = {
 
 @dataclass(frozen=True, slots=True)
 class FileMetadataCreate:
-    """Input DTO for committing uploaded object metadata as a file node."""
+    """Входные данные для фиксации загруженного объекта как файлового узла.
+
+    Attributes:
+        name: Имя создаваемого файла.
+        storage_bucket: Имя storage bucket, где лежит физический объект.
+        storage_key: Ключ физического объекта в storage.
+        size_bytes: Размер файла в байтах.
+        parent_id: Идентификатор родительской папки. Если `None`, файл
+            создаётся в корне владельца.
+        mime_type: MIME-тип файла.
+        extension: Расширение файла.
+        checksum: Контрольная сумма файла.
+        checksum_algorithm: Алгоритм контрольной суммы.
+        preview_status: Начальный статус preview.
+        visibility: Видимость создаваемого файлового узла.
+        change_comment: Комментарий к начальной версии файла.
+    """
 
     name: str
     storage_bucket: str
@@ -83,7 +109,19 @@ class FileMetadataCreate:
 
 @dataclass(frozen=True, slots=True)
 class FileVersionCreate:
-    """Input DTO for adding a new physical object version to an existing file."""
+    """Входные данные для добавления новой физической версии файла.
+
+    Attributes:
+        storage_bucket: Имя storage bucket, где лежит объект версии.
+        storage_key: Ключ объекта версии в storage.
+        size_bytes: Размер версии в байтах.
+        checksum: Контрольная сумма версии.
+        checksum_algorithm: Алгоритм контрольной суммы.
+        mime_type: MIME-тип версии.
+        extension: Расширение версии.
+        change_comment: Комментарий к версии.
+        make_current: Нужно ли сделать новую версию текущей.
+    """
 
     storage_bucket: str
     storage_key: str
@@ -97,7 +135,18 @@ class FileVersionCreate:
 
 
 class FilesService:
-    """Business service for file metadata, versions, movement, and preview state."""
+    """Бизнес-сервис для файловых метаданных, версий, перемещений и preview.
+
+    Сервис отвечает за операции над файловыми узлами и связанными строками
+    `File`/`FileVersion`. Перед изменением или чтением данных сервис проверяет
+    доступ к узлам через `AccessService`, а после успешных изменений пытается
+    записать событие аудита.
+
+    Attributes:
+        uow_factory: Фабрика UnitOfWork для создания транзакционных контекстов.
+        access_service: Сервис проверки доступа к узлам файловой системы.
+        audit_service: Сервис аудита для записи событий файлов.
+    """
 
     def __init__(
         self,
@@ -106,6 +155,17 @@ class FilesService:
         access_service: AccessService | None = None,
         audit_service: AuditService | None = None,
     ) -> None:
+        """Инициализирует сервис файлов.
+
+        Args:
+            uow_factory: Фабрика UnitOfWork. Если не передана, создаётся
+                стандартная фабрика через `create_unit_of_work_factory()`.
+            access_service: Сервис проверки доступа. Если не передан, создаётся
+                сервис доступа с той же фабрикой UnitOfWork.
+            audit_service: Сервис аудита. Если не передан, создаётся сервис
+                аудита с той же фабрикой UnitOfWork.
+        """
+
         self.uow_factory = uow_factory or create_unit_of_work_factory()
         self.access_service = access_service or get_access_service(
             uow_factory=self.uow_factory
@@ -121,7 +181,24 @@ class FilesService:
         owner_id: UUID,
         actor_id: UUID | None = None,
     ) -> FileRead:
-        """Create a file node, its file metadata row, and the initial version."""
+        """Создаёт файловый узел, метаданные файла и начальную версию.
+
+        Args:
+            data: Данные создаваемого файла и его физического объекта.
+            owner_id: Идентификатор владельца файла.
+            actor_id: Идентификатор пользователя, выполняющего операцию. Если
+                не передан, используется `owner_id`.
+
+        Returns:
+            DTO созданного файла.
+
+        Raises:
+            PermissionServiceError: Если пользователь не может создать файл в
+                корне или в указанной папке.
+            ValidationServiceError: Если родительский узел не является папкой
+                или принадлежит другому владельцу.
+            ServiceError: Если метаданные файла не удалось создать.
+        """
 
         operation = "create_file_metadata"
         snapshot: dict[str, Any] | None = None
@@ -236,6 +313,24 @@ class FilesService:
         allow_deleted: bool = False,
         allow_public: bool = True,
     ) -> FileRead:
+        """Возвращает файл по идентификатору узла.
+
+        Args:
+            node_id: Идентификатор файлового узла.
+            user_id: Идентификатор пользователя. `None` означает анонимного
+                пользователя.
+            allow_deleted: Можно ли читать удалённый узел.
+            allow_public: Можно ли учитывать публичную видимость узла.
+
+        Returns:
+            DTO найденного файла.
+
+        Raises:
+            ValidationServiceError: Если узел не является файлом.
+            PermissionServiceError: Если доступ к файлу запрещён.
+            ServiceError: Если файл не удалось загрузить.
+        """
+
         operation = "get_file"
         snapshot: dict[str, Any] | None = None
 
@@ -279,6 +374,24 @@ class FilesService:
         allow_deleted: bool = False,
         allow_public: bool = True,
     ) -> FileRead:
+        """Возвращает файл по идентификатору строки `File`.
+
+        Args:
+            file_id: Идентификатор файла.
+            user_id: Идентификатор пользователя. `None` означает анонимного
+                пользователя.
+            allow_deleted: Можно ли читать файл с удалённым узлом.
+            allow_public: Можно ли учитывать публичную видимость узла.
+
+        Returns:
+            DTO найденного файла.
+
+        Raises:
+            ValidationServiceError: Если связанный узел не является файлом.
+            PermissionServiceError: Если доступ к файлу запрещён.
+            ServiceError: Если файл не удалось загрузить.
+        """
+
         operation = "get_file_by_id"
         snapshot: dict[str, Any] | None = None
 
@@ -319,6 +432,22 @@ class FilesService:
         *,
         actor_id: UUID,
     ) -> FileRead:
+        """Обновляет технические метаданные файла.
+
+        Args:
+            node_id: Идентификатор файлового узла.
+            data: Данные обновления метаданных файла.
+            actor_id: Идентификатор пользователя, выполняющего обновление.
+
+        Returns:
+            DTO обновлённого файла.
+
+        Raises:
+            ValidationServiceError: Если узел не является файлом.
+            PermissionServiceError: Если у пользователя нет права записи.
+            ServiceError: Если метаданные файла не удалось обновить.
+        """
+
         operation = "update_file"
         snapshot: dict[str, Any] | None = None
 
@@ -372,6 +501,22 @@ class FilesService:
         *,
         actor_id: UUID,
     ) -> FileRead:
+        """Переименовывает файл.
+
+        Args:
+            node_id: Идентификатор файлового узла.
+            data: Данные с новым именем файла.
+            actor_id: Идентификатор пользователя, выполняющего переименование.
+
+        Returns:
+            DTO переименованного файла.
+
+        Raises:
+            ValidationServiceError: Если узел не является файлом.
+            PermissionServiceError: Если у пользователя нет права записи.
+            ServiceError: Если файл не удалось переименовать.
+        """
+
         operation = "rename_file"
         snapshot: dict[str, Any] | None = None
 
@@ -424,6 +569,24 @@ class FilesService:
         *,
         actor_id: UUID,
     ) -> FileRead:
+        """Перемещает файл в другую папку или в корень владельца.
+
+        Args:
+            node_id: Идентификатор файлового узла.
+            data: Данные перемещения файла.
+            actor_id: Идентификатор пользователя, выполняющего перемещение.
+
+        Returns:
+            DTO перемещённого файла.
+
+        Raises:
+            PermissionServiceError: Если пользователь не может переместить файл
+                в целевое расположение.
+            ValidationServiceError: Если целевой родитель не является папкой или
+                принадлежит другому владельцу.
+            ServiceError: Если файл не удалось переместить.
+        """
+
         operation = "move_file"
         snapshot: dict[str, Any] | None = None
 
@@ -498,6 +661,21 @@ class FilesService:
             ) from exc
 
     async def delete_file(self, node_id: UUID, *, actor_id: UUID) -> FileRead:
+        """Мягко удаляет файл, перемещая его в корзину.
+
+        Args:
+            node_id: Идентификатор файлового узла.
+            actor_id: Идентификатор пользователя, выполняющего удаление.
+
+        Returns:
+            DTO удалённого файла.
+
+        Raises:
+            ValidationServiceError: Если узел не является файлом.
+            PermissionServiceError: Если у пользователя нет права удаления.
+            ServiceError: Если файл не удалось удалить.
+        """
+
         operation = "delete_file"
         snapshot: dict[str, Any] | None = None
 
@@ -546,6 +724,21 @@ class FilesService:
             ) from exc
 
     async def restore_file(self, node_id: UUID, *, actor_id: UUID) -> FileRead:
+        """Восстанавливает файл из корзины.
+
+        Args:
+            node_id: Идентификатор файлового узла.
+            actor_id: Идентификатор пользователя, выполняющего восстановление.
+
+        Returns:
+            DTO восстановленного файла.
+
+        Raises:
+            ValidationServiceError: Если узел не является файлом.
+            PermissionServiceError: Если у пользователя нет права восстановления.
+            ServiceError: Если файл не удалось восстановить.
+        """
+
         operation = "restore_file"
         snapshot: dict[str, Any] | None = None
 
@@ -592,6 +785,21 @@ class FilesService:
             ) from exc
 
     async def purge_file(self, node_id: UUID, *, actor_id: UUID) -> None:
+        """Окончательно удаляет метаданные файла и его версии.
+
+        Метод удаляет версии файла, строку `File` и помечает связанный узел как
+        окончательно очищенный.
+
+        Args:
+            node_id: Идентификатор файлового узла.
+            actor_id: Идентификатор пользователя, выполняющего очистку.
+
+        Raises:
+            ValidationServiceError: Если узел не является файлом.
+            PermissionServiceError: Если у пользователя нет права управления.
+            ServiceError: Если файл не удалось окончательно удалить.
+        """
+
         operation = "purge_file"
         snapshot: dict[str, Any] | None = None
 
@@ -640,6 +848,27 @@ class FilesService:
         *,
         user_id: UUID | None,
     ) -> PageResponse[FileListItem]:
+        """Ищет файлы с фильтрацией, сортировкой и пагинацией.
+
+        При поиске внутри папки сервис проверяет доступ на чтение к этой папке.
+        При поиске в корне требуется аутентифицированный владелец.
+
+        Args:
+            params: Параметры поиска файлов.
+            user_id: Идентификатор пользователя, выполняющего поиск.
+
+        Returns:
+            Страница найденных файлов.
+
+        Raises:
+            PermissionServiceError: Если пользователь не может выполнять поиск
+                в указанной области.
+            ValidationServiceError: Если фильтр владельца не совпадает с
+                владельцем родительской папки или параметры сортировки
+                некорректны.
+            ServiceError: Если поиск файлов не удалось выполнить.
+        """
+
         operation = "search_files"
         page: PageResponse[FileListItem] | None = None
 
@@ -684,8 +913,57 @@ class FilesService:
                         details={"service": SERVICE_NAME, "operation": operation},
                     )
 
-                files = await _query_files(uow, params=params, owner_id=owner_id)
-                page = _files_page(files, limit=params.limit, offset=params.offset)
+                sort_by = _validate_file_sort_field(params.sort_by)
+                total = await uow.files.count_user_files_filtered(
+                    owner_id=owner_id,
+                    parent_id=params.parent_id,
+                    include_deleted_nodes=params.include_deleted,
+                    query=params.query,
+                    mime_type=params.mime_type,
+                    extension=params.extension,
+                    storage_status=params.storage_status,
+                    processing_status=params.processing_status,
+                    preview_status=params.preview_status,
+                    min_size_bytes=params.min_size_bytes,
+                    max_size_bytes=params.max_size_bytes,
+                    created_from=params.created_from,
+                    created_to=params.created_to,
+                    updated_from=params.updated_from,
+                    updated_to=params.updated_to,
+                )
+                files = await uow.files.search_user_files(
+                    owner_id=owner_id,
+                    parent_id=params.parent_id,
+                    include_deleted_nodes=params.include_deleted,
+                    query=params.query,
+                    mime_type=params.mime_type,
+                    extension=params.extension,
+                    storage_status=params.storage_status,
+                    processing_status=params.processing_status,
+                    preview_status=params.preview_status,
+                    min_size_bytes=params.min_size_bytes,
+                    max_size_bytes=params.max_size_bytes,
+                    created_from=params.created_from,
+                    created_to=params.created_to,
+                    updated_from=params.updated_from,
+                    updated_to=params.updated_to,
+                    sort_by=sort_by,
+                    sort_direction="desc" if params.sort_desc else "asc",
+                    offset=params.offset,
+                    limit=params.limit,
+                )
+                items = [
+                    FileListItem.model_validate(_file_snapshot(file)) for file in files
+                ]
+                page = PageResponse(
+                    items=items,
+                    meta=PageMeta(
+                        limit=params.limit,
+                        offset=params.offset,
+                        total=total,
+                        count=len(items),
+                    ),
+                )
 
             if page is None:
                 raise _empty_result_error(operation)
@@ -709,6 +987,26 @@ class FilesService:
         *,
         actor_id: UUID,
     ) -> FileVersionRead:
+        """Создаёт новую версию существующего файла.
+
+        Если `data.make_current` равен `True`, новая версия становится текущей,
+        а основные метаданные и storage-информация файла обновляются данными
+        этой версии.
+
+        Args:
+            node_id: Идентификатор файлового узла.
+            data: Данные создаваемой версии.
+            actor_id: Идентификатор пользователя, создающего версию.
+
+        Returns:
+            DTO созданной версии файла.
+
+        Raises:
+            ValidationServiceError: Если узел не является файлом.
+            PermissionServiceError: Если у пользователя нет права записи.
+            ServiceError: Если версию файла не удалось создать.
+        """
+
         operation = "create_file_version"
         snapshot: dict[str, Any] | None = None
         file_snapshot: dict[str, Any] | None = None
@@ -798,6 +1096,24 @@ class FilesService:
         limit: int = 50,
         offset: int = 0,
     ) -> PageResponse[FileVersionListItem]:
+        """Возвращает версии файла с пагинацией.
+
+        Args:
+            node_id: Идентификатор файлового узла.
+            user_id: Идентификатор пользователя, запрашивающего версии.
+            limit: Максимальное количество версий в ответе.
+            offset: Смещение первой версии.
+
+        Returns:
+            Страница версий файла.
+
+        Raises:
+            ValidationServiceError: Если пагинация некорректна или узел не
+                является файлом.
+            PermissionServiceError: Если у пользователя нет права чтения.
+            ServiceError: Если версии файла не удалось получить.
+        """
+
         operation = "list_versions"
         page: PageResponse[FileVersionListItem] | None = None
 
@@ -842,6 +1158,27 @@ class FilesService:
         *,
         actor_id: UUID,
     ) -> FileRead:
+        """Делает указанную версию файла текущей.
+
+        Метод проверяет, что версия принадлежит запрошенному файлу и не имеет
+        статус `DELETED`, затем обновляет текущую версию, storage-информацию и
+        метаданные файла.
+
+        Args:
+            node_id: Идентификатор файлового узла.
+            data: Данные восстановления версии.
+            actor_id: Идентификатор пользователя, выполняющего восстановление.
+
+        Returns:
+            DTO файла после восстановления версии.
+
+        Raises:
+            ValidationServiceError: Если версия не принадлежит файлу или
+                удалённая версия не может быть восстановлена.
+            PermissionServiceError: Если у пользователя нет права записи.
+            ServiceError: Если версию файла не удалось восстановить.
+        """
+
         operation = "restore_version"
         snapshot: dict[str, Any] | None = None
         version_snapshot: dict[str, Any] | None = None
@@ -940,6 +1277,21 @@ class FilesService:
         *,
         user_id: UUID | None,
     ) -> FilePreviewRead:
+        """Возвращает состояние preview файла.
+
+        Args:
+            node_id: Идентификатор файлового узла.
+            user_id: Идентификатор пользователя, запрашивающего preview.
+
+        Returns:
+            DTO состояния preview файла.
+
+        Raises:
+            ValidationServiceError: Если узел не является файлом.
+            PermissionServiceError: Если у пользователя нет права чтения.
+            ServiceError: Если состояние preview не удалось получить.
+        """
+
         operation = "get_preview"
         preview: FilePreviewRead | None = None
 
@@ -984,6 +1336,19 @@ class FilesService:
         *,
         actor_id: UUID,
     ) -> FileRead:
+        """Помечает preview файла как ожидающее генерации.
+
+        Args:
+            node_id: Идентификатор файлового узла.
+            actor_id: Идентификатор пользователя, выполняющего операцию.
+
+        Returns:
+            DTO файла с обновлённым статусом preview.
+
+        Raises:
+            ServiceError: Если статус preview не удалось обновить.
+        """
+
         return await self._update_preview_state(
             node_id=node_id,
             actor_id=actor_id,
@@ -998,6 +1363,19 @@ class FilesService:
         *,
         actor_id: UUID,
     ) -> FileRead:
+        """Помечает preview файла как находящееся в процессе генерации.
+
+        Args:
+            node_id: Идентификатор файлового узла.
+            actor_id: Идентификатор пользователя, выполняющего операцию.
+
+        Returns:
+            DTO файла с обновлённым статусом preview.
+
+        Raises:
+            ServiceError: Если статус preview не удалось обновить.
+        """
+
         return await self._update_preview_state(
             node_id=node_id,
             actor_id=actor_id,
@@ -1012,6 +1390,19 @@ class FilesService:
         *,
         actor_id: UUID,
     ) -> FileRead:
+        """Помечает генерацию preview файла как неуспешную.
+
+        Args:
+            node_id: Идентификатор файлового узла.
+            actor_id: Идентификатор пользователя, выполняющего операцию.
+
+        Returns:
+            DTO файла с обновлённым статусом preview.
+
+        Raises:
+            ServiceError: Если статус preview не удалось обновить.
+        """
+
         return await self._update_preview_state(
             node_id=node_id,
             actor_id=actor_id,
@@ -1027,6 +1418,20 @@ class FilesService:
         preview_storage_key: str,
         actor_id: UUID,
     ) -> FileRead:
+        """Помечает preview файла как готовое.
+
+        Args:
+            node_id: Идентификатор файлового узла.
+            preview_storage_key: Storage key сгенерированного preview.
+            actor_id: Идентификатор пользователя, выполняющего операцию.
+
+        Returns:
+            DTO файла с готовым preview.
+
+        Raises:
+            ServiceError: Если preview не удалось пометить готовым.
+        """
+
         return await self._update_preview_state(
             node_id=node_id,
             actor_id=actor_id,
@@ -1048,6 +1453,26 @@ class FilesService:
         preview_storage_key: str | None = None,
         audit_action: AuditAction = AuditAction.FILE_UPDATED,
     ) -> FileRead:
+        """Обновляет статус preview файла.
+
+        Args:
+            node_id: Идентификатор файлового узла.
+            actor_id: Идентификатор пользователя, выполняющего операцию.
+            operation: Название операции сервиса.
+            status: Новый статус preview.
+            message: Сообщение для audit-события.
+            preview_storage_key: Storage key preview-объекта.
+            audit_action: Audit action для записи события.
+
+        Returns:
+            DTO файла с обновлённым состоянием preview.
+
+        Raises:
+            ValidationServiceError: Если узел не является файлом.
+            PermissionServiceError: Если у пользователя нет права записи.
+            ServiceError: Если состояние preview не удалось обновить.
+        """
+
         snapshot: dict[str, Any] | None = None
 
         try:
@@ -1108,6 +1533,20 @@ class FilesService:
         message: str,
         metadata: dict[str, Any] | None = None,
     ) -> None:
+        """Безопасно записывает audit-событие файла.
+
+        Ошибки записи аудита не прерывают основную файловую операцию и
+        логируются как предупреждения.
+
+        Args:
+            user_id: Идентификатор пользователя, связанного с событием.
+            action: Тип audit-события.
+            snapshot: Снимок файла, по которому формируются audit metadata.
+            message: Сообщение события аудита.
+            metadata: Дополнительные metadata, которые нужно добавить к
+                стандартным данным файла.
+        """
+
         try:
             merged_metadata = _audit_metadata(snapshot)
             if metadata:
@@ -1124,7 +1563,7 @@ class FilesService:
             )
         except Exception as exc:
             logger.warning(
-                "Failed to write file audit event",
+                "Не удалось записать событие аудита файла",
                 extra={
                     "action": action.value,
                     "file_node_id": str(snapshot.get("node_id")),
@@ -1139,6 +1578,17 @@ class FilesService:
         operation: str,
         message: str,
     ) -> ServiceError:
+        """Преобразует ошибку базы данных в сервисную ошибку файлов.
+
+        Args:
+            exc: Исходная ошибка базы данных.
+            operation: Название операции сервиса.
+            message: Сообщение для итоговой сервисной ошибки.
+
+        Returns:
+            Сервисная ошибка, соответствующая ошибке базы данных.
+        """
+
         return service_error_from_database(
             exc,
             operation=operation,
@@ -1153,6 +1603,17 @@ class FilesService:
         operation: str,
         message: str,
     ) -> ServiceError:
+        """Логирует непредвиденную ошибку и преобразует её в `ServiceError`.
+
+        Args:
+            exc: Исходное исключение.
+            operation: Название операции сервиса.
+            message: Сообщение для логирования и итоговой сервисной ошибки.
+
+        Returns:
+            Сервисная ошибка, созданная из исходного исключения.
+        """
+
         logger.exception(
             message,
             extra={"operation": operation, "error_type": exc.__class__.__name__},
@@ -1171,60 +1632,56 @@ async def _query_files(
     params: FileSearchQuery,
     owner_id: UUID,
 ) -> list[File]:
-    statement = (
-        select(File)
-        .join(FileSystemNode, File.node_id == FileSystemNode.id)
-        .where(
-            FileSystemNode.owner_id == owner_id,
-            FileSystemNode.node_type == NodeType.FILE,
-        )
-        .options(selectinload(File.node), selectinload(File.current_version))
+    """Выполняет SQL-запрос поиска файлов.
+
+    Args:
+        uow: Активный UnitOfWork с SQLAlchemy session.
+        params: Параметры фильтрации, сортировки и поиска файлов.
+        owner_id: Идентификатор владельца, в области которого выполняется
+            поиск.
+
+    Returns:
+        Список ORM-моделей файлов, соответствующих фильтрам.
+
+    Raises:
+        ValidationServiceError: Если поле сортировки не поддерживается.
+        DatabaseError: Если выполнение запроса завершилось ошибкой.
+    """
+
+    sort_by = _validate_file_sort_field(params.sort_by)
+    return await uow.files.search_user_files(
+        owner_id=owner_id,
+        parent_id=params.parent_id,
+        include_deleted_nodes=params.include_deleted,
+        query=params.query,
+        mime_type=params.mime_type,
+        extension=params.extension,
+        storage_status=params.storage_status,
+        processing_status=params.processing_status,
+        preview_status=params.preview_status,
+        min_size_bytes=params.min_size_bytes,
+        max_size_bytes=params.max_size_bytes,
+        created_from=params.created_from,
+        created_to=params.created_to,
+        updated_from=params.updated_from,
+        updated_to=params.updated_to,
+        sort_by=sort_by,
+        sort_direction="desc" if params.sort_desc else "asc",
+        offset=0,
+        limit=REPOSITORY_PAGE_LIMIT,
     )
-
-    if params.parent_id is not None:
-        statement = statement.where(FileSystemNode.parent_id == params.parent_id)
-    if not params.include_deleted:
-        statement = statement.where(FileSystemNode.is_deleted.is_(False))
-    if params.query is not None:
-        pattern = f"%{params.query}%"
-        statement = statement.where(
-            or_(
-                FileSystemNode.name.ilike(pattern),
-                FileSystemNode.path.ilike(pattern),
-                File.mime_type.ilike(pattern),
-                File.extension.ilike(pattern),
-                File.checksum.ilike(pattern),
-            )
-        )
-    if params.mime_type is not None:
-        statement = statement.where(File.mime_type == params.mime_type)
-    if params.extension is not None:
-        statement = statement.where(File.extension == params.extension)
-    if params.storage_status is not None:
-        statement = statement.where(File.storage_status == params.storage_status)
-    if params.processing_status is not None:
-        statement = statement.where(File.processing_status == params.processing_status)
-    if params.preview_status is not None:
-        statement = statement.where(File.preview_status == params.preview_status)
-    if params.min_size_bytes is not None:
-        statement = statement.where(File.size_bytes >= params.min_size_bytes)
-    if params.max_size_bytes is not None:
-        statement = statement.where(File.size_bytes <= params.max_size_bytes)
-    if params.created_from is not None:
-        statement = statement.where(File.created_at >= params.created_from)
-    if params.created_to is not None:
-        statement = statement.where(File.created_at <= params.created_to)
-    if params.updated_from is not None:
-        statement = statement.where(File.updated_at >= params.updated_from)
-    if params.updated_to is not None:
-        statement = statement.where(File.updated_at <= params.updated_to)
-
-    statement = statement.order_by(_file_sort_column(params.sort_by, params.sort_desc))
-    result = await uow.session.execute(statement)
-    return list(result.scalars().unique().all())
 
 
 def _file_snapshot(file: File) -> dict[str, Any]:
+    """Создаёт словарный снимок файла для DTO.
+
+    Args:
+        file: ORM-модель файла.
+
+    Returns:
+        Словарь с полями файла и вложенным снимком узла, если узел загружен.
+    """
+
     return {
         "id": file.id,
         "node_id": file.node_id,
@@ -1244,6 +1701,15 @@ def _file_snapshot(file: File) -> dict[str, Any]:
 
 
 def _file_version_snapshot(version: FileVersion) -> dict[str, Any]:
+    """Создаёт словарный снимок версии файла для DTO.
+
+    Args:
+        version: ORM-модель версии файла.
+
+    Returns:
+        Словарь с полями версии файла.
+    """
+
     return {
         "id": version.id,
         "file_id": version.file_id,
@@ -1261,6 +1727,15 @@ def _file_version_snapshot(version: FileVersion) -> dict[str, Any]:
 
 
 def _node_snapshot(node: FileSystemNode) -> dict[str, Any]:
+    """Создаёт словарный снимок узла файловой системы.
+
+    Args:
+        node: ORM-модель узла файловой системы.
+
+    Returns:
+        Словарь с полями узла.
+    """
+
     return {
         "id": node.id,
         "owner_id": node.owner_id,
@@ -1286,6 +1761,17 @@ def _files_page(
     limit: int,
     offset: int,
 ) -> PageResponse[FileListItem]:
+    """Создаёт страницу файлов из полного списка результатов.
+
+    Args:
+        files: Полный список найденных файлов.
+        limit: Максимальное количество элементов на странице.
+        offset: Смещение первой записи.
+
+    Returns:
+        DTO страницы файлов с метаданными пагинации.
+    """
+
     page_files = files[offset : offset + limit]
     items = [FileListItem.model_validate(_file_snapshot(file)) for file in page_files]
     return PageResponse(
@@ -1305,6 +1791,17 @@ def _versions_page(
     limit: int,
     offset: int,
 ) -> PageResponse[FileVersionListItem]:
+    """Создаёт страницу версий файла из полного списка результатов.
+
+    Args:
+        versions: Полный список версий файла.
+        limit: Максимальное количество элементов на странице.
+        offset: Смещение первой записи.
+
+    Returns:
+        DTO страницы версий с метаданными пагинации.
+    """
+
     page_versions = versions[offset : offset + limit]
     items = [
         FileVersionListItem.model_validate(_file_version_snapshot(version))
@@ -1322,6 +1819,16 @@ def _versions_page(
 
 
 def _ensure_file_node(node: FileSystemNode, *, operation: str) -> None:
+    """Проверяет, что узел файловой системы является файлом.
+
+    Args:
+        node: Проверяемый узел файловой системы.
+        operation: Название операции сервиса для деталей ошибки.
+
+    Raises:
+        ValidationServiceError: Если узел не является файлом.
+    """
+
     if node.node_type == NodeType.FILE:
         return
     raise ValidationServiceError(
@@ -1338,6 +1845,16 @@ def _ensure_file_node(node: FileSystemNode, *, operation: str) -> None:
 
 
 def _ensure_folder_node(node: FileSystemNode, *, operation: str) -> None:
+    """Проверяет, что узел файловой системы является папкой.
+
+    Args:
+        node: Проверяемый узел файловой системы.
+        operation: Название операции сервиса для деталей ошибки.
+
+    Raises:
+        ValidationServiceError: Если узел не является папкой.
+    """
+
     if node.node_type == NodeType.FOLDER:
         return
     raise ValidationServiceError(
@@ -1353,7 +1870,21 @@ def _ensure_folder_node(node: FileSystemNode, *, operation: str) -> None:
     )
 
 
-def _file_sort_column(sort_by: str, sort_desc: bool) -> Any:
+def _validate_file_sort_field(sort_by: str) -> str:
+    """Возвращает SQLAlchemy-колонку сортировки файлов.
+
+    Args:
+        sort_by: Имя поля сортировки.
+        sort_desc: Если `True`, используется сортировка по убыванию.
+
+    Returns:
+        SQLAlchemy expression для сортировки.
+
+    Raises:
+        ValidationServiceError: Если поле сортировки не входит в
+            `ALLOWED_FILE_SORT_FIELDS`.
+    """
+
     normalized = sort_by.strip().lower()
     if normalized not in ALLOWED_FILE_SORT_FIELDS:
         raise ValidationServiceError(
@@ -1367,20 +1898,21 @@ def _file_sort_column(sort_by: str, sort_desc: bool) -> Any:
             },
         )
 
-    columns: dict[str, Any] = {
-        "name": func.lower(FileSystemNode.name),
-        "path": func.lower(FileSystemNode.path),
-        "size_bytes": File.size_bytes,
-        "mime_type": File.mime_type,
-        "extension": File.extension,
-        "created_at": File.created_at,
-        "updated_at": File.updated_at,
-    }
-    column = columns[normalized]
-    return column.desc() if sort_desc else column.asc()
+    return normalized
 
 
 def _validate_pagination(*, limit: int, offset: int) -> None:
+    """Проверяет параметры пагинации.
+
+    Args:
+        limit: Максимальное количество элементов.
+        offset: Смещение первой записи.
+
+    Raises:
+        ValidationServiceError: Если `limit` меньше 1, превышает
+            `REPOSITORY_PAGE_LIMIT` или `offset` отрицательный.
+    """
+
     if limit < 1 or limit > REPOSITORY_PAGE_LIMIT:
         raise ValidationServiceError(
             "Invalid pagination limit.",
@@ -1400,10 +1932,28 @@ def _validate_pagination(*, limit: int, offset: int) -> None:
 
 
 def _version_storage_key(storage_key: str) -> str:
+    """Создаёт storage key для первой версии файла.
+
+    Args:
+        storage_key: Базовый storage key файла.
+
+    Returns:
+        Storage key первой версии файла.
+    """
+
     return f"{storage_key}.v1"
 
 
 def _preview_message(file: File) -> str:
+    """Возвращает человекочитаемое сообщение для статуса preview.
+
+    Args:
+        file: ORM-модель файла.
+
+    Returns:
+        Сообщение, соответствующее `file.preview_status`.
+    """
+
     messages: dict[FilePreviewStatus, str] = {
         FilePreviewStatus.NOT_REQUIRED: "Preview is not required for this file.",
         FilePreviewStatus.PENDING: "Preview generation is queued.",
@@ -1415,6 +1965,16 @@ def _preview_message(file: File) -> str:
 
 
 def _audit_metadata(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Создаёт metadata для audit-события файла.
+
+    Args:
+        snapshot: Словарный снимок файла.
+
+    Returns:
+        JSON-сериализуемый словарь с ключевыми метаданными файла и связанным
+        узлом, если он присутствует в снимке.
+    """
+
     node = snapshot.get("node")
     metadata: dict[str, Any] = {
         "file_id": _jsonable(snapshot.get("id")),
@@ -1442,6 +2002,15 @@ def _audit_metadata(snapshot: dict[str, Any]) -> dict[str, Any]:
 
 
 def _jsonable(value: Any) -> Any:
+    """Преобразует значение в JSON-сериализуемый формат.
+
+    Args:
+        value: Значение для преобразования.
+
+    Returns:
+        JSON-сериализуемое представление значения.
+    """
+
     if value is None or isinstance(value, str | int | float | bool):
         return value
     if isinstance(value, UUID):
@@ -1458,6 +2027,15 @@ def _jsonable(value: Any) -> Any:
 
 
 def _empty_result_error(operation: str) -> ServiceError:
+    """Создаёт ошибку отсутствующего результата сервисной операции.
+
+    Args:
+        operation: Название операции сервиса.
+
+    Returns:
+        Ошибка `ServiceError` с информацией о сервисе и операции.
+    """
+
     return ServiceError(
         "Service operation finished without a result.",
         service=SERVICE_NAME,
@@ -1474,6 +2052,21 @@ def get_files_service(
     access_service: AccessService | None = None,
     audit_service: AuditService | None = None,
 ) -> FilesService:
+    """Создаёт или возвращает singleton экземпляр сервиса файлов.
+
+    Если передана хотя бы одна зависимость, создаётся новый экземпляр
+    `FilesService`. Если зависимости не переданы, используется ленивый
+    singleton `_files_service`.
+
+    Args:
+        uow_factory: Фабрика UnitOfWork.
+        access_service: Сервис проверки доступа.
+        audit_service: Сервис аудита.
+
+    Returns:
+        Экземпляр `FilesService`.
+    """
+
     if (
         uow_factory is not None
         or access_service is not None

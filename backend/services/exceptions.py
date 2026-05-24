@@ -1,3 +1,14 @@
+"""Исключения сервисного слоя LocalCloud.
+
+Модуль содержит единый набор исключений сервисного слоя, категории и коды
+ошибок, а также функции для преобразования ошибок инфраструктурных слоёв
+в сервисные ошибки.
+
+Сервисные исключения не зависят от FastAPI напрямую. API-слой может
+преобразовывать их в HTTP-ответы через `status_code`, `to_dict()` или
+`to_error_response()`.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -44,7 +55,11 @@ from storage.exceptions import (
 
 
 class ServiceErrorCategory(StrEnum):
-    """High-level category used by API handlers, logs, and service callers."""
+    """Категории ошибок сервисного слоя.
+
+    Категория описывает общий тип сбоя и используется обработчиками API,
+    логированием и вызывающим кодом сервисов.
+    """
 
     VALIDATION = "validation"
     CONFLICT = "conflict"
@@ -64,7 +79,11 @@ class ServiceErrorCategory(StrEnum):
 
 
 class ServiceErrorCode(StrEnum):
-    """Stable machine-readable error codes for the service layer."""
+    """Стабильные машинно-читаемые коды ошибок сервисного слоя.
+
+    Значения используются клиентами API, логами и обработчиками ошибок для
+    программного определения причины сбоя.
+    """
 
     SERVICE_ERROR = "service_error"
     VALIDATION_ERROR = "validation_error"
@@ -90,10 +109,31 @@ JsonDict = dict[str, Any]
 
 
 def _copy_details(details: Mapping[str, Any] | None) -> JsonDict:
+    """Создаёт поверхностную копию словаря деталей ошибки.
+
+    Args:
+        details: Исходные детали ошибки или `None`.
+
+    Returns:
+        Новый словарь с деталями ошибки. Если `details` не передан, возвращается
+        пустой словарь.
+    """
+
     return dict(details) if details else {}
 
 
 def _normalize_code(code: str | Enum | None, fallback: str | Enum) -> str:
+    """Нормализует код ошибки до непустой строки.
+
+    Args:
+        code: Пользовательский код ошибки, enum-значение или `None`.
+        fallback: Код ошибки по умолчанию, используемый при отсутствии или
+            пустом значении `code`.
+
+    Returns:
+        Нормализованный строковый код ошибки.
+    """
+
     value = fallback.value if isinstance(fallback, Enum) else fallback
     if code is None:
         return value
@@ -106,6 +146,17 @@ def _normalize_code(code: str | Enum | None, fallback: str | Enum) -> str:
 def _normalize_category(
     category: str | ServiceErrorCategory | None, fallback: ServiceErrorCategory
 ) -> ServiceErrorCategory:
+    """Нормализует категорию ошибки.
+
+    Args:
+        category: Пользовательская категория ошибки, enum-значение или `None`.
+        fallback: Категория по умолчанию, используемая при некорректном
+            значении `category`.
+
+    Returns:
+        Экземпляр `ServiceErrorCategory`.
+    """
+
     if category is None:
         return fallback
     if isinstance(category, ServiceErrorCategory):
@@ -117,6 +168,18 @@ def _normalize_category(
 
 
 def _jsonable(value: Any) -> Any:
+    """Преобразует значение в JSON-сериализуемый формат.
+
+    Поддерживает базовые типы, UUID, даты, enum-значения, словари,
+    коллекции, Pydantic-модели и dataclass-объекты.
+
+    Args:
+        value: Значение для преобразования.
+
+    Returns:
+        JSON-сериализуемое представление значения.
+    """
+
     if value is None or isinstance(value, str | int | float | bool):
         return value
     if isinstance(value, UUID):
@@ -137,6 +200,18 @@ def _jsonable(value: Any) -> Any:
 
 
 def _exception_payload(exc: BaseException) -> JsonDict:
+    """Создаёт JSON-сериализуемое описание исключения.
+
+    Если исключение предоставляет метод `to_dict()`, используется его результат.
+    При ошибке сериализации возвращается базовое описание исключения.
+
+    Args:
+        exc: Исключение, которое нужно представить в виде словаря.
+
+    Returns:
+        Словарь с описанием исключения.
+    """
+
     to_dict = getattr(exc, "to_dict", None)
     if callable(to_dict):
         try:
@@ -151,6 +226,19 @@ def _exception_payload(exc: BaseException) -> JsonDict:
 
 
 def _merge_details(details: Mapping[str, Any] | None, **items: Any) -> JsonDict:
+    """Объединяет исходные детали ошибки с дополнительными полями.
+
+    Поля со значением `None` пропускаются. Остальные значения приводятся к
+    JSON-сериализуемому виду.
+
+    Args:
+        details: Исходные детали ошибки.
+        **items: Дополнительные поля, которые нужно добавить в детали.
+
+    Returns:
+        Новый словарь с объединёнными деталями ошибки.
+    """
+
     merged_details = _copy_details(details)
     for key, value in items.items():
         if value is not None:
@@ -159,12 +247,22 @@ def _merge_details(details: Mapping[str, Any] | None, **items: Any) -> JsonDict:
 
 
 class ServiceError(Exception):
-    """
-    Base exception for LocalCloud service-layer failures.
+    """Базовое исключение сервисного слоя LocalCloud.
 
-    Service exceptions intentionally do not depend on FastAPI. API handlers can
-    convert them to HTTP responses through status_code, to_dict(), or
-    to_error_response().
+    Сервисные исключения не зависят от FastAPI. API-слой может преобразовывать
+    их в HTTP-ответы через `status_code`, `to_dict()` или
+    `to_error_response()`.
+
+    Attributes:
+        message: Человекочитаемое сообщение об ошибке.
+        code: Стабильный машинно-читаемый код ошибки.
+        category: Категория ошибки сервисного слоя.
+        status_code: HTTP-статус, соответствующий ошибке.
+        service: Имя сервиса, в котором произошла ошибка.
+        operation: Название операции, во время которой произошла ошибка.
+        details: Дополнительные JSON-сериализуемые детали ошибки.
+        cause: Исходное исключение, ставшее причиной сервисной ошибки.
+        retryable: Признак того, что операцию можно повторить.
     """
 
     default_message: ClassVar[str] = "Операция сервисного слоя не удалась."
@@ -186,6 +284,24 @@ class ServiceError(Exception):
         cause: BaseException | None = None,
         retryable: bool | None = None,
     ) -> None:
+        """Инициализирует сервисную ошибку.
+
+        Args:
+            message: Человекочитаемое сообщение. Если не передано,
+                используется `default_message`.
+            code: Машинно-читаемый код ошибки. Если не передан,
+                используется `default_code`.
+            category: Категория ошибки. Если не передана или некорректна,
+                используется `default_category`.
+            status_code: HTTP-статус ошибки. Если не передан,
+                используется `default_status_code`.
+            service: Имя сервиса, в котором произошла ошибка.
+            operation: Название операции, во время которой произошла ошибка.
+            details: Дополнительные детали ошибки.
+            cause: Исходное исключение.
+            retryable: Признак возможности повторить операцию.
+        """
+
         self.message = message or self.default_message
         self.code = _normalize_code(code, self.default_code)
         self.category = _normalize_category(category, self.default_category)
@@ -202,19 +318,47 @@ class ServiceError(Exception):
             self.__cause__ = cause
 
     def __str__(self) -> str:
+        """Возвращает строковое представление ошибки.
+
+        Returns:
+            Сообщение об ошибке. Если есть детали, они добавляются к сообщению.
+        """
+
         if not self.details:
             return self.message
         return f"{self.message} Details: {self.details}"
 
     @property
     def is_client_error(self) -> bool:
+        """Проверяет, относится ли ошибка к клиентским HTTP-ошибкам.
+
+        Returns:
+            `True`, если HTTP-статус находится в диапазоне 400-499.
+        """
+
         return 400 <= self.status_code < 500
 
     @property
     def is_server_error(self) -> bool:
+        """Проверяет, относится ли ошибка к серверным HTTP-ошибкам.
+
+        Returns:
+            `True`, если HTTP-статус равен 500 или выше.
+        """
+
         return self.status_code >= 500
 
     def to_dict(self, *, include_cause: bool = True) -> JsonDict:
+        """Преобразует ошибку в JSON-сериализуемый словарь.
+
+        Args:
+            include_cause: Нужно ли включать имя исходного исключения.
+
+        Returns:
+            Словарь с кодом, категорией, сообщением, HTTP-статусом,
+            признаком повторяемости и дополнительными деталями ошибки.
+        """
+
         payload: JsonDict = {
             "error": self.__class__.__name__,
             "code": self.code,
@@ -233,6 +377,15 @@ class ServiceError(Exception):
         return payload
 
     def to_error_response(self, *, request_id: str | None = None) -> ErrorResponse:
+        """Преобразует ошибку в объект ответа API.
+
+        Args:
+            request_id: Идентификатор запроса, который нужно добавить в ответ.
+
+        Returns:
+            Объект `ErrorResponse` для возврата из API-слоя.
+        """
+
         return ErrorResponse(
             error=self.code,
             message=self.message,
@@ -242,7 +395,7 @@ class ServiceError(Exception):
 
 
 class ValidationServiceError(ServiceError):
-    """Business validation error for input or intermediate data."""
+    """Ошибка бизнес-валидации входных или промежуточных данных."""
 
     default_message: ClassVar[str] = "Данные не прошли бизнес-валидацию."
     default_code: ClassVar[str] = ServiceErrorCode.VALIDATION_ERROR.value
@@ -260,6 +413,18 @@ class ValidationServiceError(ServiceError):
         details: Mapping[str, Any] | None = None,
         cause: BaseException | None = None,
     ) -> None:
+        """Инициализирует ошибку бизнес-валидации.
+
+        Args:
+            message: Человекочитаемое сообщение об ошибке.
+            field: Поле, не прошедшее валидацию.
+            value: Некорректное значение.
+            reason: Причина ошибки валидации.
+            code: Машинно-читаемый код ошибки.
+            details: Дополнительные детали ошибки.
+            cause: Исходное исключение.
+        """
+
         super().__init__(
             message,
             code=code,
@@ -269,7 +434,7 @@ class ValidationServiceError(ServiceError):
 
 
 class ConflictServiceError(ServiceError):
-    """Business state conflict or uniqueness conflict."""
+    """Ошибка конфликта бизнес-состояния или нарушения уникальности."""
 
     default_message: ClassVar[str] = (
         "Операция конфликтует с текущим состоянием системы."
@@ -291,6 +456,20 @@ class ConflictServiceError(ServiceError):
         details: Mapping[str, Any] | None = None,
         cause: BaseException | None = None,
     ) -> None:
+        """Инициализирует ошибку конфликта состояния.
+
+        Args:
+            message: Человекочитаемое сообщение об ошибке.
+            entity_name: Название сущности, с которой связан конфликт.
+            entity_id: Идентификатор сущности.
+            field: Поле, вызвавшее конфликт.
+            value: Значение, вызвавшее конфликт.
+            reason: Причина конфликта.
+            code: Машинно-читаемый код ошибки.
+            details: Дополнительные детали ошибки.
+            cause: Исходное исключение.
+        """
+
         super().__init__(
             message,
             code=code,
@@ -307,7 +486,7 @@ class ConflictServiceError(ServiceError):
 
 
 class NotFoundServiceError(ServiceError):
-    """Requested business entity was not found."""
+    """Ошибка отсутствия запрошенной бизнес-сущности."""
 
     default_message: ClassVar[str] = "Запрашиваемая сущность не найдена."
     default_code: ClassVar[str] = ServiceErrorCode.NOT_FOUND.value
@@ -325,6 +504,18 @@ class NotFoundServiceError(ServiceError):
         details: Mapping[str, Any] | None = None,
         cause: BaseException | None = None,
     ) -> None:
+        """Инициализирует ошибку отсутствия сущности.
+
+        Args:
+            message: Человекочитаемое сообщение об ошибке.
+            entity_name: Название искомой сущности.
+            entity_id: Идентификатор искомой сущности.
+            lookup: Параметры поиска сущности.
+            code: Машинно-читаемый код ошибки.
+            details: Дополнительные детали ошибки.
+            cause: Исходное исключение.
+        """
+
         resolved_message = message
         if resolved_message is None and entity_name is not None:
             resolved_message = f"Сущность '{entity_name}' не найдена."
@@ -340,7 +531,7 @@ class NotFoundServiceError(ServiceError):
 
 
 class PermissionServiceError(ServiceError):
-    """Node or resource permission check failed."""
+    """Ошибка проверки прав доступа к узлу или ресурсу."""
 
     default_message: ClassVar[str] = "Недостаточно прав для выполнения операции."
     default_code: ClassVar[str] = ServiceErrorCode.PERMISSION_DENIED.value
@@ -361,6 +552,21 @@ class PermissionServiceError(ServiceError):
         details: Mapping[str, Any] | None = None,
         cause: BaseException | None = None,
     ) -> None:
+        """Инициализирует ошибку проверки прав доступа.
+
+        Args:
+            message: Человекочитаемое сообщение об ошибке.
+            user_id: Идентификатор пользователя.
+            resource_type: Тип ресурса.
+            resource_id: Идентификатор ресурса.
+            action: Запрошенное действие.
+            required_permission: Требуемое право доступа.
+            reason: Причина отказа.
+            code: Машинно-читаемый код ошибки.
+            details: Дополнительные детали ошибки.
+            cause: Исходное исключение.
+        """
+
         super().__init__(
             message,
             code=code,
@@ -378,7 +584,7 @@ class PermissionServiceError(ServiceError):
 
 
 class AuthenticationServiceError(ServiceError):
-    """User authentication or session validation failed."""
+    """Ошибка аутентификации пользователя или проверки сессии."""
 
     default_message: ClassVar[str] = "Не удалось выполнить аутентификацию."
     default_code: ClassVar[str] = ServiceErrorCode.AUTHENTICATION_ERROR.value
@@ -400,6 +606,20 @@ class AuthenticationServiceError(ServiceError):
         details: Mapping[str, Any] | None = None,
         cause: BaseException | None = None,
     ) -> None:
+        """Инициализирует ошибку аутентификации.
+
+        Args:
+            message: Человекочитаемое сообщение об ошибке.
+            user_id: Идентификатор пользователя.
+            username: Имя пользователя.
+            email: Email пользователя.
+            session_id: Идентификатор сессии.
+            reason: Причина ошибки аутентификации.
+            code: Машинно-читаемый код ошибки.
+            details: Дополнительные детали ошибки.
+            cause: Исходное исключение.
+        """
+
         super().__init__(
             message,
             code=code,
@@ -416,7 +636,7 @@ class AuthenticationServiceError(ServiceError):
 
 
 class AuthorizationServiceError(ServiceError):
-    """Authenticated user is not authorized for the requested action."""
+    """Ошибка авторизации аутентифицированного пользователя."""
 
     default_message: ClassVar[str] = (
         "Пользователь не авторизован для выполнения операции."
@@ -439,6 +659,19 @@ class AuthorizationServiceError(ServiceError):
         details: Mapping[str, Any] | None = None,
         cause: BaseException | None = None,
     ) -> None:
+        """Инициализирует ошибку авторизации.
+
+        Args:
+            message: Человекочитаемое сообщение об ошибке.
+            user_id: Идентификатор пользователя.
+            role: Текущая роль пользователя.
+            required_role: Роль, необходимая для выполнения операции.
+            action: Запрошенное действие.
+            code: Машинно-читаемый код ошибки.
+            details: Дополнительные детали ошибки.
+            cause: Исходное исключение.
+        """
+
         super().__init__(
             message,
             code=code,
@@ -454,7 +687,7 @@ class AuthorizationServiceError(ServiceError):
 
 
 class QuotaExceededServiceError(ServiceError):
-    """User storage quota or file-size limit was exceeded."""
+    """Ошибка превышения пользовательской квоты или лимита размера файла."""
 
     default_message: ClassVar[str] = "Превышена доступная квота пользователя."
     default_code: ClassVar[str] = ServiceErrorCode.QUOTA_EXCEEDED.value
@@ -475,6 +708,21 @@ class QuotaExceededServiceError(ServiceError):
         details: Mapping[str, Any] | None = None,
         cause: BaseException | None = None,
     ) -> None:
+        """Инициализирует ошибку превышения квоты.
+
+        Args:
+            message: Человекочитаемое сообщение об ошибке.
+            user_id: Идентификатор пользователя.
+            resource_type: Тип ресурса, для которого превышена квота.
+            requested: Запрошенный объём ресурса.
+            used: Уже использованный объём ресурса.
+            limit: Максимально допустимый объём ресурса.
+            available: Доступный остаток ресурса.
+            code: Машинно-читаемый код ошибки.
+            details: Дополнительные детали ошибки.
+            cause: Исходное исключение.
+        """
+
         super().__init__(
             message,
             code=code,
@@ -492,7 +740,7 @@ class QuotaExceededServiceError(ServiceError):
 
 
 class StorageServiceError(ServiceError):
-    """Business operation failed because object storage operation failed."""
+    """Ошибка бизнес-операции, вызванная сбоем файлового хранилища."""
 
     default_message: ClassVar[str] = "Операция с файловым хранилищем не удалась."
     default_code: ClassVar[str] = ServiceErrorCode.STORAGE_SERVICE_ERROR.value
@@ -512,6 +760,19 @@ class StorageServiceError(ServiceError):
         cause: BaseException | None = None,
         retryable: bool | None = None,
     ) -> None:
+        """Инициализирует ошибку файлового хранилища.
+
+        Args:
+            message: Человекочитаемое сообщение об ошибке.
+            bucket: Имя бакета.
+            object_key: Ключ объекта в хранилище.
+            operation: Операция, во время которой произошла ошибка.
+            code: Машинно-читаемый код ошибки.
+            details: Дополнительные детали ошибки.
+            cause: Исходное исключение.
+            retryable: Признак возможности повторить операцию.
+        """
+
         super().__init__(
             message,
             code=code,
@@ -523,7 +784,7 @@ class StorageServiceError(ServiceError):
 
 
 class UploadServiceError(ServiceError):
-    """File upload scenario failed."""
+    """Ошибка сценария загрузки файла."""
 
     default_message: ClassVar[str] = "Операция загрузки файла не удалась."
     default_code: ClassVar[str] = ServiceErrorCode.UPLOAD_ERROR.value
@@ -543,6 +804,20 @@ class UploadServiceError(ServiceError):
         details: Mapping[str, Any] | None = None,
         cause: BaseException | None = None,
     ) -> None:
+        """Инициализирует ошибку загрузки файла.
+
+        Args:
+            message: Человекочитаемое сообщение об ошибке.
+            upload_session_id: Идентификатор сессии загрузки.
+            file_id: Идентификатор файла.
+            user_id: Идентификатор пользователя.
+            part_number: Номер части multipart-загрузки.
+            operation: Операция, во время которой произошла ошибка.
+            code: Машинно-читаемый код ошибки.
+            details: Дополнительные детали ошибки.
+            cause: Исходное исключение.
+        """
+
         super().__init__(
             message,
             code=code,
@@ -559,7 +834,7 @@ class UploadServiceError(ServiceError):
 
 
 class DownloadServiceError(ServiceError):
-    """File or archive download scenario failed."""
+    """Ошибка сценария скачивания файла или архива."""
 
     default_message: ClassVar[str] = "Операция скачивания файла не удалась."
     default_code: ClassVar[str] = ServiceErrorCode.DOWNLOAD_ERROR.value
@@ -580,6 +855,21 @@ class DownloadServiceError(ServiceError):
         details: Mapping[str, Any] | None = None,
         cause: BaseException | None = None,
     ) -> None:
+        """Инициализирует ошибку скачивания файла или архива.
+
+        Args:
+            message: Человекочитаемое сообщение об ошибке.
+            file_id: Идентификатор файла.
+            node_id: Идентификатор узла.
+            version_id: Идентификатор версии файла.
+            public_link_id: Идентификатор публичной ссылки.
+            user_id: Идентификатор пользователя.
+            operation: Операция, во время которой произошла ошибка.
+            code: Машинно-читаемый код ошибки.
+            details: Дополнительные детали ошибки.
+            cause: Исходное исключение.
+        """
+
         super().__init__(
             message,
             code=code,
@@ -597,7 +887,7 @@ class DownloadServiceError(ServiceError):
 
 
 class PublicLinkServiceError(ServiceError):
-    """Public-link business scenario failed."""
+    """Ошибка бизнес-сценария работы с публичной ссылкой."""
 
     default_message: ClassVar[str] = "Операция с публичной ссылкой не удалась."
     default_code: ClassVar[str] = ServiceErrorCode.PUBLIC_LINK_ERROR.value
@@ -616,6 +906,19 @@ class PublicLinkServiceError(ServiceError):
         details: Mapping[str, Any] | None = None,
         cause: BaseException | None = None,
     ) -> None:
+        """Инициализирует ошибку публичной ссылки.
+
+        Args:
+            message: Человекочитаемое сообщение об ошибке.
+            public_link_id: Идентификатор публичной ссылки.
+            token: Токен публичной ссылки.
+            node_id: Идентификатор узла, связанного с публичной ссылкой.
+            reason: Причина ошибки.
+            code: Машинно-читаемый код ошибки.
+            details: Дополнительные детали ошибки.
+            cause: Исходное исключение.
+        """
+
         super().__init__(
             message,
             code=code,
@@ -631,7 +934,7 @@ class PublicLinkServiceError(ServiceError):
 
 
 class BackgroundTaskServiceError(ServiceError):
-    """Background task management failed."""
+    """Ошибка управления фоновой задачей."""
 
     default_message: ClassVar[str] = "Операция с фоновой задачей не удалась."
     default_code: ClassVar[str] = ServiceErrorCode.BACKGROUND_TASK_ERROR.value
@@ -653,6 +956,20 @@ class BackgroundTaskServiceError(ServiceError):
         details: Mapping[str, Any] | None = None,
         cause: BaseException | None = None,
     ) -> None:
+        """Инициализирует ошибку фоновой задачи.
+
+        Args:
+            message: Человекочитаемое сообщение об ошибке.
+            task_id: Идентификатор фоновой задачи.
+            task_type: Тип фоновой задачи.
+            status: Статус фоновой задачи.
+            worker_id: Идентификатор обработчика задачи.
+            operation: Операция, во время которой произошла ошибка.
+            code: Машинно-читаемый код ошибки.
+            details: Дополнительные детали ошибки.
+            cause: Исходное исключение.
+        """
+
         super().__init__(
             message,
             code=code,
@@ -669,7 +986,7 @@ class BackgroundTaskServiceError(ServiceError):
 
 
 class RegistrationServiceError(ServiceError):
-    """User-registration workflow failed."""
+    """Ошибка сценария регистрации пользователя."""
 
     default_message: ClassVar[str] = "Операция регистрации не удалась."
     default_code: ClassVar[str] = ServiceErrorCode.REGISTRATION_ERROR.value
@@ -690,6 +1007,21 @@ class RegistrationServiceError(ServiceError):
         details: Mapping[str, Any] | None = None,
         cause: BaseException | None = None,
     ) -> None:
+        """Инициализирует ошибку регистрации пользователя.
+
+        Args:
+            message: Человекочитаемое сообщение об ошибке.
+            request_id: Идентификатор запроса регистрации.
+            user_id: Идентификатор пользователя.
+            email: Email пользователя.
+            username: Имя пользователя.
+            status: Статус регистрационного сценария.
+            reason: Причина ошибки регистрации.
+            code: Машинно-читаемый код ошибки.
+            details: Дополнительные детали ошибки.
+            cause: Исходное исключение.
+        """
+
         super().__init__(
             message,
             code=code,
@@ -713,6 +1045,18 @@ def service_error_from_database(
     message: str | None = None,
     service: str | None = None,
 ) -> ServiceError:
+    """Преобразует ошибку базы данных в сервисную ошибку.
+
+    Args:
+        exc: Исключение слоя базы данных.
+        operation: Операция, во время которой произошла ошибка.
+        message: Пользовательское сообщение для итоговой сервисной ошибки.
+        service: Имя сервиса, в котором произошла ошибка.
+
+    Returns:
+        Экземпляр `ServiceError` или одного из его подклассов.
+    """
+
     details = _merge_details(
         {"database_error": _exception_payload(exc)},
         service=service,
@@ -782,6 +1126,18 @@ def service_error_from_storage(
     message: str | None = None,
     service: str | None = None,
 ) -> ServiceError:
+    """Преобразует ошибку файлового хранилища в сервисную ошибку.
+
+    Args:
+        exc: Исключение слоя файлового хранилища.
+        operation: Операция, во время которой произошла ошибка.
+        message: Пользовательское сообщение для итоговой сервисной ошибки.
+        service: Имя сервиса, в котором произошла ошибка.
+
+    Returns:
+        Экземпляр `ServiceError` или одного из его подклассов.
+    """
+
     details = _merge_details(
         {"storage_error": _exception_payload(exc)},
         service=service,
@@ -835,6 +1191,18 @@ def service_error_from_security(
     message: str | None = None,
     service: str | None = None,
 ) -> ServiceError:
+    """Преобразует ошибку безопасности в сервисную ошибку.
+
+    Args:
+        exc: Исключение слоя безопасности, JWT, cookie или проверки прав.
+        operation: Операция, во время которой произошла ошибка.
+        message: Пользовательское сообщение для итоговой сервисной ошибки.
+        service: Имя сервиса, в котором произошла ошибка.
+
+    Returns:
+        Экземпляр `ServiceError` или одного из его подклассов.
+    """
+
     details = _merge_details(
         {"security_error": _exception_payload(exc)},
         service=service,
@@ -893,6 +1261,21 @@ def service_error_from_exception(
     message: str | None = None,
     service: str | None = None,
 ) -> ServiceError:
+    """Преобразует произвольное исключение в сервисную ошибку.
+
+    Если исключение уже является `ServiceError`, оно возвращается без изменений.
+    Для известных типов ошибок используется специализированное преобразование.
+
+    Args:
+        exc: Исходное исключение.
+        operation: Операция, во время которой произошла ошибка.
+        message: Пользовательское сообщение для итоговой сервисной ошибки.
+        service: Имя сервиса, в котором произошла ошибка.
+
+    Returns:
+        Экземпляр `ServiceError` или одного из его подклассов.
+    """
+
     if isinstance(exc, ServiceError):
         return exc
     if isinstance(exc, DatabaseError):
@@ -924,12 +1307,31 @@ def service_error_from_exception(
 
 
 def get_service_error_status_code(exc: ServiceError) -> int:
+    """Возвращает HTTP-статус сервисной ошибки.
+
+    Args:
+        exc: Сервисная ошибка.
+
+    Returns:
+        HTTP-статус, связанный с ошибкой.
+    """
+
     return exc.status_code
 
 
 def service_error_to_response(
     exc: ServiceError, *, request_id: str | None = None
 ) -> ErrorResponse:
+    """Преобразует сервисную ошибку в объект ответа API.
+
+    Args:
+        exc: Сервисная ошибка.
+        request_id: Идентификатор запроса, который нужно добавить в ответ.
+
+    Returns:
+        Объект `ErrorResponse`.
+    """
+
     return exc.to_error_response(request_id=request_id)
 
 

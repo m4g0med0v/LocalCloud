@@ -1,3 +1,15 @@
+"""Сервис аутентификации LocalCloud.
+
+Модуль содержит бизнес-логику JWT-аутентификации, управления refresh-token
+сессиями, установки и очистки cookie, получения текущего пользователя,
+ротации refresh token и отзыва пользовательских сессий.
+
+Сервис не зависит от FastAPI-роутеров напрямую, но может принимать объект
+`fastapi.Response` для установки или очистки auth-cookie. Все операции с
+хранилищем выполняются через UnitOfWork, а значимые auth-события по
+возможности записываются в аудит.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -55,7 +67,18 @@ MAX_SESSION_LIMIT = 1000
 
 
 class AuthService:
-    """Business service for JWT authentication and refresh-token sessions."""
+    """Бизнес-сервис JWT-аутентификации и refresh-token сессий.
+
+    Сервис выполняет вход пользователя, выпуск JWT-пары, ротацию refresh token,
+    выход из системы, отзыв сессий и получение текущего пользователя по access
+    token. Также сервис обновляет hash пароля при необходимости и пишет события
+    аудита для auth-операций.
+
+    Attributes:
+        uow_factory: Фабрика UnitOfWork для создания транзакционных контекстов.
+        audit_service: Сервис аудита для записи событий аутентификации.
+        settings: Настройки приложения, используемые JWT и cookie-слоями.
+    """
 
     def __init__(
         self,
@@ -64,6 +87,17 @@ class AuthService:
         audit_service: AuditService | None = None,
         settings: Settings | None = None,
     ) -> None:
+        """Инициализирует сервис аутентификации.
+
+        Args:
+            uow_factory: Фабрика UnitOfWork. Если не передана, создаётся
+                стандартная фабрика через `create_unit_of_work_factory()`.
+            audit_service: Сервис аудита. Если не передан, создаётся сервис
+                аудита с той же фабрикой UnitOfWork.
+            settings: Настройки приложения. Если не переданы, загружаются через
+                `get_settings()`.
+        """
+
         self.uow_factory = uow_factory or create_unit_of_work_factory()
         self.audit_service = audit_service or get_audit_service(
             uow_factory=self.uow_factory,
@@ -79,7 +113,27 @@ class AuthService:
         user_agent: str | None = None,
         device_name: str | None = None,
     ) -> LoginResponse:
-        """Authenticate user, create JWT pair and persist refresh session."""
+        """Аутентифицирует пользователя и создаёт refresh-token сессию.
+
+        Метод возвращает только публичный DTO ответа. Внутренняя JWT-пара
+        создаётся методом `login_with_tokens()`. Если передан `response`,
+        access и refresh token устанавливаются в cookie.
+
+        Args:
+            data: Данные входа пользователя.
+            response: HTTP-ответ, в который нужно установить auth-cookie.
+            ip_address: IP-адрес клиента.
+            user_agent: User-Agent клиента.
+            device_name: Название устройства или клиента.
+
+        Returns:
+            DTO успешного входа с текущим пользователем.
+
+        Raises:
+            AuthenticationServiceError: Если логин или пароль неверны либо
+                пользователь не может войти.
+            ServiceError: Если вход не удалось выполнить.
+        """
 
         login_response, _tokens = await self.login_with_tokens(
             data,
@@ -99,7 +153,27 @@ class AuthService:
         user_agent: str | None = None,
         device_name: str | None = None,
     ) -> tuple[LoginResponse, TokenPair]:
-        """Authenticate user and return response plus internal token pair."""
+        """Аутентифицирует пользователя и возвращает ответ вместе с JWT-парой.
+
+        Метод проверяет пользователя по email или username, валидирует пароль,
+        при необходимости обновляет hash пароля, создаёт access и refresh token,
+        сохраняет refresh-token сессию и обновляет время последнего входа.
+
+        Args:
+            data: Данные входа пользователя.
+            response: HTTP-ответ, в который нужно установить auth-cookie.
+            ip_address: IP-адрес клиента.
+            user_agent: User-Agent клиента.
+            device_name: Название устройства или клиента.
+
+        Returns:
+            Кортеж из публичного DTO входа и внутренней JWT-пары.
+
+        Raises:
+            AuthenticationServiceError: Если учётные данные неверны или
+                пользователь не может войти.
+            ServiceError: Если вход не удалось выполнить.
+        """
 
         operation = "login"
         user_snapshot: dict[str, Any] = {}
@@ -242,7 +316,27 @@ class AuthService:
         user_agent: str | None = None,
         device_name: str | None = None,
     ) -> RefreshTokenResponse:
-        """Rotate refresh token and issue a new access/refresh JWT pair."""
+        """Ротирует refresh token и создаёт новую JWT-пару.
+
+        Метод возвращает только публичный DTO ответа. Внутренняя JWT-пара
+        создаётся методом `refresh_session_with_tokens()`. Если передан
+        `response`, новые access и refresh token устанавливаются в cookie.
+
+        Args:
+            refresh_token: Исходный refresh token.
+            response: HTTP-ответ, в который нужно установить новые auth-cookie.
+            ip_address: IP-адрес клиента.
+            user_agent: User-Agent клиента.
+            device_name: Название устройства или клиента.
+
+        Returns:
+            DTO успешного обновления сессии.
+
+        Raises:
+            AuthenticationServiceError: Если refresh token недействителен,
+                отозван, истёк или не соответствует пользователю.
+            ServiceError: Если сессию не удалось обновить.
+        """
 
         refresh_response, _tokens = await self.refresh_session_with_tokens(
             refresh_token,
@@ -262,6 +356,29 @@ class AuthService:
         user_agent: str | None = None,
         device_name: str | None = None,
     ) -> tuple[RefreshTokenResponse, TokenPair]:
+        """Ротирует refresh token и возвращает ответ вместе с новой JWT-парой.
+
+        Метод декодирует refresh token, ищет соответствующую сессию по hash,
+        проверяет возможность использования токена, отзывает старую сессию,
+        создаёт новую refresh-token сессию и возвращает новую JWT-пару.
+
+        Args:
+            refresh_token: Исходный refresh token.
+            response: HTTP-ответ, в который нужно установить новые auth-cookie.
+            ip_address: IP-адрес клиента.
+            user_agent: User-Agent клиента.
+            device_name: Название устройства или клиента.
+
+        Returns:
+            Кортеж из публичного DTO обновления сессии и новой JWT-пары.
+
+        Raises:
+            AuthenticationServiceError: Если refresh token недействителен,
+                повторно использован, не найден, истёк или принадлежит другому
+                пользователю.
+            ServiceError: Если сессию не удалось обновить.
+        """
+
         operation = "refresh_session"
         token_pair: TokenPair | None = None
         user_snapshot: dict[str, Any] = {}
@@ -421,7 +538,23 @@ class AuthService:
         response: Response | None = None,
         reason: str = "logout",
     ) -> LogoutResponse:
-        """Revoke current refresh session if token is available and clear cookies."""
+        """Завершает текущую refresh-token сессию и очищает cookie.
+
+        Если refresh token передан и найден в хранилище, соответствующая сессия
+        отзывается. Если передан `response`, auth-cookie очищаются независимо
+        от наличия refresh token.
+
+        Args:
+            refresh_token: Refresh token текущей сессии.
+            response: HTTP-ответ, в котором нужно очистить auth-cookie.
+            reason: Причина отзыва refresh-token сессии.
+
+        Returns:
+            DTO успешного выхода из системы.
+
+        Raises:
+            ServiceError: Если выход из системы не удалось выполнить.
+        """
 
         operation = "logout"
         user_id: UUID | None = None
@@ -478,6 +611,21 @@ class AuthService:
         response: Response | None = None,
         reason: str = "logout all sessions",
     ) -> LogoutResponse:
+        """Завершает все refresh-token сессии пользователя.
+
+        Args:
+            user_id: Идентификатор пользователя, сессии которого нужно
+                завершить.
+            response: HTTP-ответ, в котором нужно очистить auth-cookie.
+            reason: Причина массового отзыва сессий.
+
+        Returns:
+            DTO успешного завершения всех сессий.
+
+        Raises:
+            ServiceError: Если сессии пользователя не удалось завершить.
+        """
+
         operation = "logout_all"
         revoked_count = 0
 
@@ -523,6 +671,23 @@ class AuthService:
         self,
         access_token: str,
     ) -> CurrentUserRead:
+        """Возвращает текущего пользователя по access token.
+
+        Метод декодирует access token, загружает пользователя и его активные
+        роли, а затем формирует DTO текущего пользователя.
+
+        Args:
+            access_token: JWT access token.
+
+        Returns:
+            DTO текущего пользователя.
+
+        Raises:
+            AuthenticationServiceError: Если access token недействителен или
+                пользователь не может войти.
+            ServiceError: Если пользователя не удалось получить.
+        """
+
         operation = "get_current_user_from_access_token"
         current_user: CurrentUserRead | None = None
 
@@ -577,6 +742,23 @@ class AuthService:
         limit: int = 100,
         offset: int = 0,
     ) -> list[AuthSessionRead]:
+        """Возвращает список refresh-token сессий пользователя.
+
+        Args:
+            user_id: Идентификатор пользователя.
+            include_inactive: Если `True`, включает отозванные, истёкшие и
+                неактивные сессии.
+            limit: Максимальное количество сессий в ответе.
+            offset: Смещение первой сессии.
+
+        Returns:
+            Список сессий пользователя.
+
+        Raises:
+            AuthenticationServiceError: Если параметры пагинации некорректны.
+            ServiceError: Если список сессий не удалось получить.
+        """
+
         operation = "list_sessions"
         sessions: list[AuthSessionRead] | None = None
         self._validate_session_pagination(
@@ -621,6 +803,22 @@ class AuthService:
         session_id: UUID,
         reason: str = "session revoked",
     ) -> AuthSessionRead:
+        """Отзывает одну refresh-token сессию пользователя.
+
+        Args:
+            user_id: Идентификатор владельца сессии.
+            session_id: Идентификатор refresh-token сессии.
+            reason: Причина отзыва сессии.
+
+        Returns:
+            DTO отозванной сессии.
+
+        Raises:
+            AuthenticationServiceError: Если сессия не принадлежит указанному
+                пользователю.
+            ServiceError: Если сессию не удалось отозвать.
+        """
+
         operation = "revoke_session"
         result: AuthSessionRead | None = None
 
@@ -670,6 +868,20 @@ class AuthService:
             ) from exc
 
     def _create_token_pair(self, user_id: UUID) -> TokenPair:
+        """Создаёт access и refresh token для пользователя.
+
+        Args:
+            user_id: Идентификатор пользователя, для которого создаётся
+                JWT-пара.
+
+        Returns:
+            DTO с access token, refresh token и датами их истечения.
+
+        Raises:
+            JwtTokenError: Если созданный токен не удалось декодировать для
+                получения срока действия.
+        """
+
         access_token = create_access_token(user_id, settings=self.settings)
         refresh_token = create_refresh_token(user_id, settings=self.settings)
         access_payload = decode_access_token(access_token, settings=self.settings)
@@ -687,6 +899,19 @@ class AuthService:
         uow: Any,
         email_or_username: str,
     ) -> User | None:
+        """Ищет пользователя для входа по email или username.
+
+        Если строка содержит символ `@`, сначала выполняется поиск по email.
+        Если пользователь по email не найден, выполняется поиск по username.
+
+        Args:
+            uow: Активный UnitOfWork с репозиторием пользователей.
+            email_or_username: Email или username пользователя.
+
+        Returns:
+            ORM-модель пользователя или `None`, если пользователь не найден.
+        """
+
         if "@" in email_or_username:
             user = await uow.users.get_by_email(
                 email_or_username,
@@ -700,6 +925,13 @@ class AuthService:
         )
 
     def _set_response_cookies(self, response: Response, token_pair: TokenPair) -> None:
+        """Устанавливает auth-cookie в HTTP-ответ.
+
+        Args:
+            response: HTTP-ответ FastAPI.
+            token_pair: JWT-пара, которую нужно записать в cookie.
+        """
+
         set_auth_cookies(
             response,
             access_token=token_pair.access_token,
@@ -714,6 +946,20 @@ class AuthService:
         operation: str,
         field: str,
     ) -> datetime:
+        """Проверяет, что JWT-сервис вернул дату истечения токена.
+
+        Args:
+            value: Дата истечения токена или `None`.
+            operation: Название операции сервиса.
+            field: Имя проверяемого поля.
+
+        Returns:
+            Переданную дату истечения токена.
+
+        Raises:
+            ServiceError: Если дата отсутствует.
+        """
+
         if value is None:
             raise ServiceError(
                 "JWT-сервис не вернул дату истечения токена.",
@@ -730,6 +976,18 @@ class AuthService:
         offset: int,
         operation: str,
     ) -> None:
+        """Проверяет параметры пагинации списка сессий.
+
+        Args:
+            limit: Максимальное количество сессий в ответе.
+            offset: Смещение первой сессии.
+            operation: Название операции сервиса.
+
+        Raises:
+            AuthenticationServiceError: Если `limit` меньше 1, превышает
+                `MAX_SESSION_LIMIT` или `offset` отрицательный.
+        """
+
         if limit < 1 or limit > MAX_SESSION_LIMIT:
             raise AuthenticationServiceError(
                 "Некорректный размер страницы списка сессий.",
@@ -753,6 +1011,15 @@ class AuthService:
 
     @staticmethod
     def _invalid_credentials_error(*, operation: str) -> AuthenticationServiceError:
+        """Создаёт ошибку неверных учётных данных.
+
+        Args:
+            operation: Название операции сервиса.
+
+        Returns:
+            Ошибка аутентификации с причиной `invalid_credentials`.
+        """
+
         return AuthenticationServiceError(
             "Неверный логин или пароль.",
             reason="invalid_credentials",
@@ -761,6 +1028,19 @@ class AuthService:
 
     @staticmethod
     def _require_result(result: T | None, *, operation: str) -> T:
+        """Проверяет, что операция сервиса вернула результат.
+
+        Args:
+            result: Результат операции или `None`.
+            operation: Название операции сервиса.
+
+        Returns:
+            Переданный результат, если он не равен `None`.
+
+        Raises:
+            ServiceError: Если результат отсутствует.
+        """
+
         if result is None:
             raise ServiceError(
                 "Сервис аутентификации не вернул результат операции.",
@@ -773,6 +1053,17 @@ class AuthService:
     def _database_error(
         exc: DatabaseError, *, operation: str, message: str
     ) -> ServiceError:
+        """Преобразует ошибку базы данных в сервисную ошибку auth-сервиса.
+
+        Args:
+            exc: Исходная ошибка базы данных.
+            operation: Название операции сервиса.
+            message: Сообщение для итоговой сервисной ошибки.
+
+        Returns:
+            Сервисная ошибка, соответствующая ошибке базы данных.
+        """
+
         return service_error_from_database(
             exc,
             operation=operation,
@@ -784,6 +1075,17 @@ class AuthService:
     def _unexpected_error(
         exc: Exception, *, operation: str, message: str
     ) -> ServiceError:
+        """Логирует непредвиденную ошибку и преобразует её в `ServiceError`.
+
+        Args:
+            exc: Исходное исключение.
+            operation: Название операции сервиса.
+            message: Сообщение для логирования и итоговой сервисной ошибки.
+
+        Returns:
+            Сервисная ошибка, созданная из исходного исключения.
+        """
+
         logger.exception(
             message,
             extra={"operation": operation, "error_type": exc.__class__.__name__},
@@ -804,6 +1106,19 @@ class AuthService:
         ip_address: str | None = None,
         user_agent: str | None = None,
     ) -> None:
+        """Безопасно записывает событие неуспешного входа.
+
+        Ошибка аудита не прерывает основную auth-операцию, так как
+        `_safe_log_auth_event()` подавляет и логирует ошибки записи аудита.
+
+        Args:
+            email_or_username: Email или username, использованный при входе.
+            reason: Причина неуспешного входа.
+            user_id: Идентификатор пользователя, если он был найден.
+            ip_address: IP-адрес клиента.
+            user_agent: User-Agent клиента.
+        """
+
         await self._safe_log_auth_event(
             actor_id=user_id,
             action=AuditAction.USER_LOGIN_FAILED,
@@ -833,6 +1148,25 @@ class AuthService:
         ip_address: str | None = None,
         user_agent: str | None = None,
     ) -> None:
+        """Безопасно записывает пользовательское или системное auth-событие.
+
+        Если `actor_id` отсутствует, записывается системное событие. Ошибки
+        аудита не прерывают основную операцию и логируются как предупреждения.
+
+        Args:
+            actor_id: Идентификатор пользователя-инициатора. Если `None`,
+                событие записывается как системное.
+            action: Тип события аудита.
+            result: Результат события аудита.
+            entity_id: Идентификатор auth-сущности, обычно refresh-token
+                сессии.
+            message: Сообщение события аудита.
+            metadata: Дополнительные JSON-сериализуемые данные события.
+            error_code: Код ошибки для неуспешного события.
+            ip_address: IP-адрес клиента.
+            user_agent: User-Agent клиента.
+        """
+
         try:
             if actor_id is None:
                 await self.audit_service.log_system_event(
@@ -862,7 +1196,7 @@ class AuthService:
             )
         except Exception as exc:
             logger.warning(
-                "Failed to write audit event for auth service.",
+                "Не удалось записать событие аудита для сервиса аутентификации",
                 extra={
                     "action": action.value,
                     "entity_id": str(entity_id) if entity_id else None,
@@ -874,6 +1208,15 @@ class AuthService:
 
 
 def _user_snapshot(user: User) -> dict[str, Any]:
+    """Создаёт словарный снимок пользователя для DTO.
+
+    Args:
+        user: ORM-модель пользователя.
+
+    Returns:
+        Словарь с основными полями пользователя.
+    """
+
     return {
         "id": user.id,
         "email": user.email,
@@ -885,6 +1228,15 @@ def _user_snapshot(user: User) -> dict[str, Any]:
 
 
 def _role_snapshot(role: Role) -> dict[str, Any]:
+    """Создаёт словарный снимок роли для DTO.
+
+    Args:
+        role: ORM-модель роли.
+
+    Returns:
+        Словарь с основными полями роли.
+    """
+
     return {
         "id": role.id,
         "name": role.name,
@@ -896,6 +1248,15 @@ def _role_snapshot(role: Role) -> dict[str, Any]:
 
 
 def _role_list_item(role: Role) -> RoleListItem:
+    """Создаёт DTO элемента списка ролей.
+
+    Args:
+        role: ORM-модель роли.
+
+    Returns:
+        DTO `RoleListItem`.
+    """
+
     return RoleListItem.model_validate(_role_snapshot(role))
 
 
@@ -903,16 +1264,45 @@ def _current_user_read(
     snapshot: Mapping[str, Any],
     roles: list[Role],
 ) -> CurrentUserRead:
+    """Создаёт DTO текущего пользователя.
+
+    Args:
+        snapshot: Словарный снимок пользователя.
+        roles: Активные роли пользователя.
+
+    Returns:
+        DTO `CurrentUserRead` с вложенным списком ролей.
+    """
+
     payload = dict(snapshot)
     payload["roles"] = [_role_list_item(role) for role in roles]
     return CurrentUserRead.model_validate(payload)
 
 
 def _auth_session_read(token: RefreshToken) -> AuthSessionRead:
+    """Создаёт DTO auth-сессии из refresh token.
+
+    Args:
+        token: ORM-модель refresh token.
+
+    Returns:
+        DTO `AuthSessionRead`.
+    """
+
     return AuthSessionRead.model_validate(_refresh_token_snapshot(token))
 
 
 def _refresh_token_snapshot(token: RefreshToken) -> dict[str, Any]:
+    """Создаёт словарный снимок refresh-token сессии.
+
+    Args:
+        token: ORM-модель refresh token.
+
+    Returns:
+        Словарь с полями refresh-token сессии, включая вычисленный признак
+        активности.
+    """
+
     return {
         "id": token.id,
         "user_id": token.user_id,
@@ -931,6 +1321,15 @@ def _refresh_token_snapshot(token: RefreshToken) -> dict[str, Any]:
 
 
 def _audit_user(snapshot: Mapping[str, Any]) -> dict[str, Any]:
+    """Создаёт payload пользователя для записи в аудит.
+
+    Args:
+        snapshot: Словарный снимок пользователя.
+
+    Returns:
+        JSON-сериализуемый словарь с ключевыми полями пользователя.
+    """
+
     return {
         "id": str(snapshot["id"]),
         "email": str(snapshot["email"]),
@@ -942,6 +1341,15 @@ def _audit_user(snapshot: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _enum_or_value(value: Any) -> Any:
+    """Возвращает значение enum или исходный объект.
+
+    Args:
+        value: Enum-значение или произвольный объект.
+
+    Returns:
+        `value.value`, если объект похож на enum, иначе исходное значение.
+    """
+
     return getattr(value, "value", value)
 
 
@@ -951,6 +1359,20 @@ def get_auth_service(
     audit_service: AuditService | None = None,
     settings: Settings | None = None,
 ) -> AuthService:
+    """Создаёт экземпляр сервиса аутентификации.
+
+    Args:
+        uow_factory: Фабрика UnitOfWork. Если не передана, сервис создаст
+            стандартную фабрику самостоятельно.
+        audit_service: Сервис аудита. Если не передан, будет создан сервис
+            аудита с той же фабрикой UnitOfWork.
+        settings: Настройки приложения. Если не переданы, сервис загрузит их
+            через `get_settings()`.
+
+    Returns:
+        Экземпляр `AuthService`.
+    """
+
     return AuthService(
         uow_factory=uow_factory,
         audit_service=audit_service,

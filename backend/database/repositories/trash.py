@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from sqlalchemy import Select, and_, or_, select
+from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -1148,6 +1148,108 @@ class TrashItemRepository(BaseRepository[TrashItem]):
             )
 
         return await self.count(*conditions)
+
+    async def search_user_trash(
+        self,
+        *,
+        owner_id: uuid.UUID,
+        include_purged: bool = False,
+        status: Any | None = None,
+        restore_available: bool | None = None,
+        deleted_from: datetime | None = None,
+        deleted_to: datetime | None = None,
+        expires_before: datetime | None = None,
+        query: str | None = None,
+        sort_by: TrashItemSortField = "deleted_at",
+        sort_direction: TrashSortDirection = "desc",
+        offset: int = 0,
+        limit: int = 100,
+    ) -> list[TrashItem]:
+        """Search owner trash items with extended service filters."""
+
+        self._validate_pagination(offset=offset, limit=limit)
+        conditions: list[Any] = [TrashItem.owner_id == owner_id]
+        if not include_purged:
+            conditions.append(TrashItem.purged_at.is_(None))
+        if status is not None:
+            conditions.append(TrashItem.status == status)
+        if restore_available is not None:
+            conditions.append(TrashItem.restore_available.is_(restore_available))
+        if deleted_from is not None:
+            conditions.append(TrashItem.deleted_at >= deleted_from)
+        if deleted_to is not None:
+            conditions.append(TrashItem.deleted_at <= deleted_to)
+        if expires_before is not None:
+            conditions.append(TrashItem.expires_at.is_not(None))
+            conditions.append(TrashItem.expires_at <= expires_before)
+        if query:
+            like_query = f"%{query.strip().lower()}%"
+            conditions.append(
+                or_(
+                    func.lower(TrashItem.original_path).like(like_query),
+                    func.lower(self.nodes.model.name).like(like_query),
+                )
+            )
+
+        statement = (
+            select(TrashItem)
+            .join(self.nodes.model, TrashItem.node_id == self.nodes.model.id)
+            .where(and_(*conditions))
+            .options(
+                selectinload(TrashItem.node),
+                selectinload(TrashItem.owner),
+                selectinload(TrashItem.deleter),
+                selectinload(TrashItem.original_parent),
+            )
+            .order_by(self._get_order_by(sort_by, sort_direction), TrashItem.id.asc())
+            .offset(offset)
+            .limit(limit)
+        )
+        return await self.scalars_all(statement, operation="search_user_trash")
+
+    async def count_user_trash_filtered(
+        self,
+        *,
+        owner_id: uuid.UUID,
+        include_purged: bool = False,
+        status: Any | None = None,
+        restore_available: bool | None = None,
+        deleted_from: datetime | None = None,
+        deleted_to: datetime | None = None,
+        expires_before: datetime | None = None,
+        query: str | None = None,
+    ) -> int:
+        """Count owner trash items with extended service filters."""
+
+        conditions: list[Any] = [TrashItem.owner_id == owner_id]
+        if not include_purged:
+            conditions.append(TrashItem.purged_at.is_(None))
+        if status is not None:
+            conditions.append(TrashItem.status == status)
+        if restore_available is not None:
+            conditions.append(TrashItem.restore_available.is_(restore_available))
+        if deleted_from is not None:
+            conditions.append(TrashItem.deleted_at >= deleted_from)
+        if deleted_to is not None:
+            conditions.append(TrashItem.deleted_at <= deleted_to)
+        if expires_before is not None:
+            conditions.append(TrashItem.expires_at.is_not(None))
+            conditions.append(TrashItem.expires_at <= expires_before)
+        statement = select(func.count()).select_from(TrashItem).where(and_(*conditions))
+        if query:
+            like_query = f"%{query.strip().lower()}%"
+            statement = (
+                statement.join(self.nodes.model, TrashItem.node_id == self.nodes.model.id)
+                .where(
+                    or_(
+                        func.lower(TrashItem.original_path).like(like_query),
+                        func.lower(self.nodes.model.name).like(like_query),
+                    )
+                )
+            )
+
+        result = await self.session.execute(statement)
+        return int(result.scalar_one() or 0)
 
     async def count_expired_items(
         self,

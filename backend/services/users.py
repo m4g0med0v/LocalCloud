@@ -1,3 +1,28 @@
+"""
+Сервис управления учетными записями пользователей LocalCloud.
+
+Модуль содержит бизнес-логику создания, чтения, обновления и изменения статусов
+пользовательских аккаунтов. Сервис также отвечает за проверку уникальности
+email и username, назначение роли пользователя при создании, смену пароля,
+подтверждение email, обновление времени последнего входа и получение статистики
+по статусам пользователей.
+
+Основные операции модуля:
+    * Создание пользователя с опциональным назначением стандартной роли.
+    * Получение пользователя по идентификатору, email или username.
+    * Получение пользователя вместе с ролями.
+    * Получение данных текущего пользователя.
+    * Проверка существования email и username.
+    * Получение списка пользователей с фильтрацией, сортировкой и пагинацией.
+    * Обновление идентификационных данных пользователя.
+    * Административное обновление пользователя.
+    * Изменение статуса пользователя: approve, block, unblock, reject, delete.
+    * Подтверждение email и смена пароля.
+    * Обновление времени последнего входа.
+    * Получение статистики пользователей по статусам.
+    * Запись пользовательских и системных событий в аудит.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -50,7 +75,16 @@ USER_SORT_FIELDS = {
 
 
 class UsersService:
-    """Business service for LocalCloud user accounts."""
+    """Сервис бизнес-логики для учетных записей пользователей.
+
+    Управляет созданием, чтением, обновлением и изменением статусов пользователей.
+    Сервис валидирует пароли, вызывает репозитории пользователей и ролей через
+    Unit of Work, формирует схемы ответа и записывает события аудита.
+
+    Attributes:
+        uow_factory: Фабрика Unit of Work для работы с базой данных.
+        audit_service: Сервис записи событий аудита.
+    """
 
     def __init__(
         self,
@@ -58,6 +92,18 @@ class UsersService:
         uow_factory: UnitOfWorkFactory | None = None,
         audit_service: AuditService | None = None,
     ) -> None:
+        """Инициализирует сервис пользователей.
+
+        Если зависимости не переданы явно, создает их через стандартные фабрики
+        и функции получения сервисов.
+
+        Args:
+            uow_factory: Фабрика Unit of Work. Если None, создается стандартная
+                фабрика.
+            audit_service: Сервис аудита. Если None, создается стандартный сервис
+                аудита.
+        """
+
         self.uow_factory = uow_factory or create_unit_of_work_factory()
         self.audit_service = audit_service or get_audit_service(
             uow_factory=self.uow_factory,
@@ -70,7 +116,26 @@ class UsersService:
         actor_id: UUID | None = None,
         assign_default_role: bool = True,
     ) -> UserRead:
-        """Create a user and optionally assign the default user role."""
+        """Создает пользователя.
+
+        Проверяет надежность пароля, хеширует его, создает учетную запись и при
+        необходимости назначает стандартную роль пользователя. После успешного
+        создания записывает пользовательское или системное событие аудита.
+
+        Args:
+            data: Данные для создания пользователя.
+            actor_id: Идентификатор пользователя, выполняющего операцию. Если None,
+                событие аудита записывается как системное.
+            assign_default_role: Нужно ли назначить пользователю стандартную роль.
+
+        Returns:
+            Данные созданного пользователя.
+
+        Raises:
+            ValidationServiceError: Если пароль не прошел проверку надежности.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
 
         operation = "create_user"
         password_hash = self._hash_password(data.password)
@@ -136,6 +201,19 @@ class UsersService:
             ) from exc
 
     async def get_user(self, user_id: UUID) -> UserRead:
+        """Возвращает пользователя по идентификатору.
+
+        Args:
+            user_id: Идентификатор пользователя.
+
+        Returns:
+            Данные найденного пользователя.
+
+        Raises:
+            ServiceError: Если пользователь не найден, произошла ошибка базы данных
+                или непредвиденная ошибка сервиса.
+        """
+
         operation = "get_user"
         result: UserRead | None = None
         try:
@@ -157,6 +235,22 @@ class UsersService:
             ) from exc
 
     async def get_user_with_roles(self, user_id: UUID) -> UserWithRolesRead:
+        """Возвращает пользователя вместе со всеми его ролями.
+
+        Загружает пользователя и его роли, включая неактивные роли, затем формирует
+        расширенную схему ответа.
+
+        Args:
+            user_id: Идентификатор пользователя.
+
+        Returns:
+            Данные пользователя со списком ролей.
+
+        Raises:
+            ServiceError: Если пользователь не найден, произошла ошибка базы данных
+                или непредвиденная ошибка сервиса.
+        """
+
         operation = "get_user_with_roles"
         result: UserWithRolesRead | None = None
         try:
@@ -181,6 +275,21 @@ class UsersService:
             ) from exc
 
     async def get_current_user_read(self, user_id: UUID) -> CurrentUserRead:
+        """Возвращает данные текущего пользователя.
+
+        Загружает пользователя и его активные роли для ответа текущей сессии.
+
+        Args:
+            user_id: Идентификатор текущего пользователя.
+
+        Returns:
+            Данные текущего пользователя с активными ролями.
+
+        Raises:
+            ServiceError: Если пользователь не найден, произошла ошибка базы данных
+                или непредвиденная ошибка сервиса.
+        """
+
         operation = "get_current_user_read"
         result: CurrentUserRead | None = None
         try:
@@ -207,6 +316,19 @@ class UsersService:
             ) from exc
 
     async def get_user_by_email(self, email: str) -> UserRead:
+        """Возвращает пользователя по email.
+
+        Args:
+            email: Email пользователя.
+
+        Returns:
+            Данные найденного пользователя.
+
+        Raises:
+            ServiceError: Если пользователь с указанным email не найден, произошла
+                ошибка базы данных или непредвиденная ошибка сервиса.
+        """
+
         operation = "get_user_by_email"
         result: UserRead | None = None
         try:
@@ -230,6 +352,19 @@ class UsersService:
             ) from exc
 
     async def get_user_by_username(self, username: str) -> UserRead:
+        """Возвращает пользователя по username.
+
+        Args:
+            username: Username пользователя.
+
+        Returns:
+            Данные найденного пользователя.
+
+        Raises:
+            ServiceError: Если пользователь с указанным username не найден,
+                произошла ошибка базы данных или непредвиденная ошибка сервиса.
+        """
+
         operation = "get_user_by_username"
         result: UserRead | None = None
         try:
@@ -255,6 +390,20 @@ class UsersService:
     async def email_exists(
         self, email: str, *, exclude_user_id: UUID | None = None
     ) -> bool:
+        """Проверяет существование email.
+
+        Args:
+            email: Email для проверки.
+            exclude_user_id: Идентификатор пользователя, которого нужно исключить
+                из проверки. Используется при обновлении профиля.
+
+        Returns:
+            True, если email уже существует, иначе False.
+
+        Raises:
+            ServiceError: Если произошла ошибка базы данных.
+        """
+
         return await self._exists(
             operation="email_exists",
             call_name="email_exists",
@@ -265,6 +414,20 @@ class UsersService:
     async def username_exists(
         self, username: str, *, exclude_user_id: UUID | None = None
     ) -> bool:
+        """Проверяет существование username.
+
+        Args:
+            username: Username для проверки.
+            exclude_user_id: Идентификатор пользователя, которого нужно исключить
+                из проверки. Используется при обновлении профиля.
+
+        Returns:
+            True, если username уже существует, иначе False.
+
+        Raises:
+            ServiceError: Если произошла ошибка базы данных.
+        """
+
         return await self._exists(
             operation="username_exists",
             call_name="username_exists",
@@ -273,6 +436,24 @@ class UsersService:
         )
 
     async def list_users(self, params: UserQueryParams) -> PageResponse[UserListItem]:
+        """Возвращает список пользователей.
+
+        Загружает пользователей батчами, фильтрует по диапазону даты создания,
+        сортирует результат и формирует страницу ответа.
+
+        Args:
+            params: Параметры фильтрации, поиска, сортировки и пагинации
+                пользователей.
+
+        Returns:
+            Страница пользователей и метаданные пагинации.
+
+        Raises:
+            ValidationServiceError: Если параметры пагинации некорректны.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         operation = "list_users"
         self._validate_pagination(offset=params.offset, limit=params.limit)
         snapshots: list[dict[str, Any]] = []
@@ -319,6 +500,25 @@ class UsersService:
         *,
         actor_id: UUID | None = None,
     ) -> UserRead:
+        """Обновляет идентификационные данные пользователя.
+
+        Обновляет только явно переданные поля email и username. Если данные
+        обновления пустые, возвращает текущего пользователя без изменений.
+
+        Args:
+            user_id: Идентификатор обновляемого пользователя.
+            data: Данные обновления пользователя.
+            actor_id: Идентификатор пользователя, выполняющего операцию. Если None,
+                в аудит записывается событие от имени самого пользователя.
+
+        Returns:
+            Обновленные данные пользователя.
+
+        Raises:
+            ServiceError: Если пользователь не найден, произошла ошибка базы данных
+                или непредвиденная ошибка сервиса.
+        """
+
         operation = "update_user"
         values = data.model_dump(exclude_unset=True)
         if not values:
@@ -375,6 +575,26 @@ class UsersService:
         *,
         actor_id: UUID | None = None,
     ) -> UserRead:
+        """Административно обновляет пользователя.
+
+        Может обновить email, username, статус, причины блокировки или отклонения,
+        а также признак подтверждения email. Если данные обновления пустые,
+        возвращает текущего пользователя без изменений.
+
+        Args:
+            user_id: Идентификатор обновляемого пользователя.
+            data: Данные административного обновления.
+            actor_id: Идентификатор администратора, выполняющего операцию. Если None,
+                событие аудита записывается как системное.
+
+        Returns:
+            Обновленные данные пользователя.
+
+        Raises:
+            ServiceError: Если пользователь не найден, произошла ошибка базы данных
+                или непредвиденная ошибка сервиса.
+        """
+
         operation = "admin_update_user"
         values = data.model_dump(exclude_unset=True)
         if not values:
@@ -457,6 +677,28 @@ class UsersService:
         *,
         actor_id: UUID | None = None,
     ) -> UserRead:
+        """Обновляет статус пользователя.
+
+        Делегирует изменение статуса специализированным методам: approve_user,
+        block_user, reject_user или delete_user. Для блокировки и отклонения требует
+        указать причину.
+
+        Args:
+            user_id: Идентификатор пользователя.
+            data: Данные обновления статуса.
+            actor_id: Идентификатор пользователя, выполняющего операцию. Если None,
+                событие аудита может быть записано как системное.
+
+        Returns:
+            Данные пользователя после изменения статуса.
+
+        Raises:
+            ValidationServiceError: Если для блокировки или отклонения не указана
+                причина.
+            ServiceError: Если пользователь не найден, произошла ошибка базы данных
+                или непредвиденная ошибка сервиса.
+        """
+
         if data.status == UserStatus.ACTIVE:
             return await self.approve_user(
                 user_id, actor_id=actor_id, is_email_verified=True
@@ -498,6 +740,21 @@ class UsersService:
         actor_id: UUID | None = None,
         is_email_verified: bool = True,
     ) -> UserRead:
+        """Одобряет пользователя и переводит его в активный статус.
+
+        Args:
+            user_id: Идентификатор пользователя.
+            actor_id: Идентификатор пользователя, выполняющего операцию.
+            is_email_verified: Нужно ли установить email как подтвержденный.
+
+        Returns:
+            Данные одобренного пользователя.
+
+        Raises:
+            ServiceError: Если пользователь не найден, произошла ошибка базы данных
+                или непредвиденная ошибка сервиса.
+        """
+
         snapshot = await self._mutate_status(
             user_id=user_id,
             actor_id=actor_id,
@@ -518,6 +775,21 @@ class UsersService:
         *,
         actor_id: UUID | None = None,
     ) -> UserRead:
+        """Блокирует пользователя.
+
+        Args:
+            user_id: Идентификатор пользователя.
+            data: Данные блокировки, включая причину.
+            actor_id: Идентификатор пользователя, выполняющего блокировку.
+
+        Returns:
+            Данные заблокированного пользователя.
+
+        Raises:
+            ServiceError: Если пользователь не найден, произошла ошибка базы данных
+                или непредвиденная ошибка сервиса.
+        """
+
         snapshot = await self._mutate_status(
             user_id=user_id,
             actor_id=actor_id,
@@ -536,6 +808,20 @@ class UsersService:
         *,
         actor_id: UUID | None = None,
     ) -> UserRead:
+        """Разблокирует пользователя.
+
+        Args:
+            user_id: Идентификатор пользователя.
+            actor_id: Идентификатор пользователя, выполняющего разблокировку.
+
+        Returns:
+            Данные разблокированного пользователя.
+
+        Raises:
+            ServiceError: Если пользователь не найден, произошла ошибка базы данных
+                или непредвиденная ошибка сервиса.
+        """
+
         snapshot = await self._mutate_status(
             user_id=user_id,
             actor_id=actor_id,
@@ -555,6 +841,21 @@ class UsersService:
         *,
         actor_id: UUID | None = None,
     ) -> UserRead:
+        """Отклоняет пользователя.
+
+        Args:
+            user_id: Идентификатор пользователя.
+            data: Данные отклонения, включая причину.
+            actor_id: Идентификатор пользователя, выполняющего отклонение.
+
+        Returns:
+            Данные отклоненного пользователя.
+
+        Raises:
+            ServiceError: Если пользователь не найден, произошла ошибка базы данных
+                или непредвиденная ошибка сервиса.
+        """
+
         snapshot = await self._mutate_status(
             user_id=user_id,
             actor_id=actor_id,
@@ -573,6 +874,22 @@ class UsersService:
         *,
         actor_id: UUID | None = None,
     ) -> UserRead:
+        """Мягко удаляет пользователя.
+
+        Переводит пользователя в статус удаления через общую мутацию статуса.
+
+        Args:
+            user_id: Идентификатор пользователя.
+            actor_id: Идентификатор пользователя, выполняющего удаление.
+
+        Returns:
+            Данные мягко удаленного пользователя.
+
+        Raises:
+            ServiceError: Если пользователь не найден, произошла ошибка базы данных
+                или непредвиденная ошибка сервиса.
+        """
+
         snapshot = await self._mutate_status(
             user_id=user_id,
             actor_id=actor_id,
@@ -592,6 +909,22 @@ class UsersService:
         is_verified: bool = True,
         actor_id: UUID | None = None,
     ) -> UserRead:
+        """Обновляет признак подтверждения email пользователя.
+
+        Args:
+            user_id: Идентификатор пользователя.
+            is_verified: Новое значение признака подтверждения email.
+            actor_id: Идентификатор пользователя, выполняющего операцию. Если None,
+                в аудит записывается событие от имени самого пользователя.
+
+        Returns:
+            Данные пользователя после обновления признака подтверждения email.
+
+        Raises:
+            ServiceError: Если пользователь не найден, произошла ошибка базы данных
+                или непредвиденная ошибка сервиса.
+        """
+
         operation = "set_email_verified"
         snapshot: dict[str, Any] = {}
         try:
@@ -640,6 +973,26 @@ class UsersService:
         *,
         actor_id: UUID | None = None,
     ) -> UserRead:
+        """Изменяет пароль пользователя.
+
+        Проверяет надежность нового пароля, хеширует его и сохраняет новый hash
+        пароля в базе данных.
+
+        Args:
+            user_id: Идентификатор пользователя.
+            new_password: Новый пароль пользователя.
+            actor_id: Идентификатор пользователя, выполняющего операцию. Если None,
+                в аудит записывается событие от имени самого пользователя.
+
+        Returns:
+            Данные пользователя после изменения пароля.
+
+        Raises:
+            ValidationServiceError: Если новый пароль не прошел проверку надежности.
+            ServiceError: Если пользователь не найден, произошла ошибка базы данных
+                или непредвиденная ошибка сервиса.
+        """
+
         operation = "change_password"
         password_hash = self._hash_password(new_password)
         snapshot: dict[str, Any] = {}
@@ -688,6 +1041,19 @@ class UsersService:
             ) from exc
 
     async def mark_login(self, user_id: UUID) -> UserRead:
+        """Обновляет время последнего входа пользователя.
+
+        Args:
+            user_id: Идентификатор пользователя.
+
+        Returns:
+            Данные пользователя с обновленным last_login_at.
+
+        Raises:
+            ServiceError: Если пользователь не найден, произошла ошибка базы данных
+                или непредвиденная ошибка сервиса.
+        """
+
         operation = "mark_login"
         snapshot: dict[str, Any] = {}
         try:
@@ -717,6 +1083,17 @@ class UsersService:
             ) from exc
 
     async def get_status_counts(self) -> dict[UserStatus, int]:
+        """Возвращает количество пользователей по статусам.
+
+        Returns:
+            Словарь, где ключ — статус пользователя, а значение — количество
+            пользователей с этим статусом.
+
+        Raises:
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         operation = "get_status_counts"
         result: dict[UserStatus, int] | None = None
         try:
@@ -754,6 +1131,22 @@ class UsersService:
         value: str,
         exclude_user_id: UUID | None,
     ) -> bool:
+        """Проверяет существование email или username.
+
+        Args:
+            operation: Название операции для контекста ошибок.
+            call_name: Имя проверки: email_exists или username_exists.
+            value: Проверяемое значение email или username.
+            exclude_user_id: Идентификатор пользователя, которого нужно исключить
+                из проверки.
+
+        Returns:
+            True, если значение уже существует, иначе False.
+
+        Raises:
+            ServiceError: Если произошла ошибка базы данных.
+        """
+
         result = False
         try:
             async with self.uow_factory() as uow:
@@ -780,6 +1173,21 @@ class UsersService:
     async def _collect_user_snapshots(
         self, *, uow: Any, params: UserQueryParams
     ) -> list[dict[str, Any]]:
+        """Загружает снимки пользователей батчами.
+
+        Если указан query, выполняет поиск пользователей. Иначе загружает список
+        пользователей. Дополнительно фильтрует снимки по диапазону даты создания.
+        Данные читаются страницами до тех пор, пока очередной батч не станет меньше
+        REPOSITORY_PAGE_LIMIT.
+
+        Args:
+            uow: Unit of Work с репозиторием пользователей.
+            params: Параметры поиска и фильтрации пользователей.
+
+        Returns:
+            Список снимков пользователей.
+        """
+
         statuses = [params.status] if params.status is not None else None
         offset = 0
         snapshots: list[dict[str, Any]] = []
@@ -827,6 +1235,29 @@ class UsersService:
         mutator: Any,
         after: Any | None = None,
     ) -> dict[str, Any]:
+        """Выполняет общую мутацию статуса пользователя.
+
+        Загружает пользователя, применяет mutator, опционально выполняет after,
+        обновляет ORM-объект, сохраняет изменения и записывает событие аудита.
+
+        Args:
+            user_id: Идентификатор пользователя.
+            actor_id: Идентификатор пользователя, выполняющего операцию. Если None,
+                событие аудита записывается как системное.
+            action: Действие аудита.
+            operation: Название операции для контекста ошибок.
+            message: Сообщение события аудита.
+            mutator: Функция, изменяющая пользователя через Unit of Work.
+            after: Дополнительная функция, применяемая к пользователю после mutator.
+
+        Returns:
+            Снимок пользователя после изменения.
+
+        Raises:
+            ServiceError: Если пользователь не найден, произошла ошибка базы данных
+                или непредвиденная ошибка сервиса.
+        """
+
         snapshot: dict[str, Any] = {}
         try:
             async with self.uow_factory() as uow:
@@ -862,11 +1293,34 @@ class UsersService:
 
     @staticmethod
     def _hash_password(password: str) -> str:
+        """Проверяет пароль и возвращает его хеш.
+
+        Args:
+            password: Пароль пользователя.
+
+        Returns:
+            Хеш пароля.
+
+        Raises:
+            ValueError: Если пароль не прошел проверку надежности.
+        """
+
         require_strong_password(password)
         return hash_password(password)
 
     @staticmethod
     def _validate_pagination(*, offset: int, limit: int) -> None:
+        """Проверяет параметры пагинации списка пользователей.
+
+        Args:
+            offset: Смещение страницы.
+            limit: Размер страницы.
+
+        Raises:
+            ValidationServiceError: Если offset отрицательный или limit находится
+                вне диапазона от 1 до MAX_PAGE_LIMIT.
+        """
+
         if offset < 0:
             raise ValidationServiceError(
                 "offset не может быть отрицательным.",
@@ -888,6 +1342,19 @@ class UsersService:
     def _sort_snapshots(
         snapshots: list[dict[str, Any]], *, sort_by: str, sort_desc: bool
     ) -> list[dict[str, Any]]:
+        """Сортирует снимки пользователей.
+
+        Если поле сортировки не поддерживается, используется created_at.
+
+        Args:
+            snapshots: Список снимков пользователей.
+            sort_by: Поле сортировки.
+            sort_desc: Нужно ли сортировать по убыванию.
+
+        Returns:
+            Отсортированный список снимков пользователей.
+        """
+
         normalized_sort_by = sort_by if sort_by in USER_SORT_FIELDS else "created_at"
         return sorted(
             snapshots,
@@ -900,6 +1367,19 @@ class UsersService:
 
     @staticmethod
     def _require_result(result: Any | None, *, operation: str) -> Any:
+        """Возвращает результат или выбрасывает ошибку при его отсутствии.
+
+        Args:
+            result: Результат операции.
+            operation: Название операции для контекста ошибки.
+
+        Returns:
+            Переданный результат, если он не None.
+
+        Raises:
+            ServiceError: Если result равен None.
+        """
+
         if result is None:
             raise ServiceError(
                 "Сервис пользователей не вернул результат операции.",
@@ -912,6 +1392,17 @@ class UsersService:
     def _database_error(
         exc: DatabaseError, *, operation: str, message: str
     ) -> ServiceError:
+        """Преобразует ошибку базы данных в ошибку сервиса пользователей.
+
+        Args:
+            exc: Исходная ошибка базы данных.
+            operation: Название операции, во время которой возникла ошибка.
+            message: Сообщение для создаваемой ошибки сервиса.
+
+        Returns:
+            Ошибка сервисного уровня с контекстом сервиса пользователей.
+        """
+
         return service_error_from_database(
             exc, operation=operation, message=message, service=SERVICE_NAME
         )
@@ -920,6 +1411,19 @@ class UsersService:
     def _unexpected_error(
         exc: Exception, *, operation: str, message: str
     ) -> ServiceError:
+        """Преобразует непредвиденное исключение в ошибку сервиса.
+
+        Дополнительно пишет исключение в лог с названием операции и типом ошибки.
+
+        Args:
+            exc: Исходное исключение.
+            operation: Название операции, во время которой возникла ошибка.
+            message: Сообщение для лога и создаваемой ошибки сервиса.
+
+        Returns:
+            Ошибка сервисного уровня с контекстом исходного исключения.
+        """
+
         logger.exception(
             message,
             extra={"operation": operation, "error_type": exc.__class__.__name__},
@@ -937,6 +1441,21 @@ class UsersService:
         message: str,
         metadata: Mapping[str, Any] | None = None,
     ) -> None:
+        """Безопасно записывает событие пользователя в аудит.
+
+        Если actor_id равен None, записывает системное событие. Иначе записывает
+        пользовательское событие от имени actor_id. Ошибки аудита не пробрасываются
+        выше.
+
+        Args:
+            actor_id: Идентификатор пользователя, выполнившего операцию. Если None,
+                событие считается системным.
+            action: Действие аудита.
+            entity_id: Идентификатор пользователя, связанного с событием.
+            message: Сообщение события аудита.
+            metadata: Дополнительные метаданные события.
+        """
+
         try:
             if actor_id is None:
                 await self.audit_service.log_system_event(
@@ -971,6 +1490,17 @@ class UsersService:
 
 
 def _user_snapshot(user: User) -> dict[str, Any]:
+    """Создает снимок пользователя.
+
+    Args:
+        user: ORM-модель пользователя.
+
+    Returns:
+        Словарь с идентификатором, email, username, статусом, признаком
+        подтверждения email, временем последнего входа, датами изменения статуса,
+        причинами блокировки или отклонения и временными метками.
+    """
+
     return {
         "id": user.id,
         "email": user.email,
@@ -990,6 +1520,16 @@ def _user_snapshot(user: User) -> dict[str, Any]:
 
 
 def _role_snapshot(role: Role) -> dict[str, Any]:
+    """Создает снимок роли.
+
+    Args:
+        role: ORM-модель роли.
+
+    Returns:
+        Словарь с идентификатором, именем, кодом, отображаемым названием,
+        системным признаком и активностью роли.
+    """
+
     return {
         "id": role.id,
         "name": role.name,
@@ -1001,16 +1541,44 @@ def _role_snapshot(role: Role) -> dict[str, Any]:
 
 
 def _user_read(snapshot: Mapping[str, Any]) -> UserRead:
+    """Преобразует снимок пользователя в схему чтения.
+
+    Args:
+        snapshot: Снимок пользователя.
+
+    Returns:
+        Схема чтения пользователя.
+    """
+
     return UserRead.model_validate(dict(snapshot))
 
 
 def _user_list_item(snapshot: Mapping[str, Any]) -> UserListItem:
+    """Преобразует снимок пользователя в элемент списка.
+
+    Args:
+        snapshot: Снимок пользователя.
+
+    Returns:
+        Элемент списка пользователей.
+    """
+
     return UserListItem.model_validate(dict(snapshot))
 
 
 def _user_with_roles_read(
     snapshot: Mapping[str, Any], roles: list[Role]
 ) -> UserWithRolesRead:
+    """Преобразует снимок пользователя и роли в расширенную схему.
+
+    Args:
+        snapshot: Снимок пользователя.
+        roles: Список ролей пользователя.
+
+    Returns:
+        Схема пользователя со списком ролей.
+    """
+
     payload = dict(snapshot)
     payload["roles"] = [_role_list_item(role) for role in roles]
     return UserWithRolesRead.model_validate(payload)
@@ -1019,16 +1587,44 @@ def _user_with_roles_read(
 def _current_user_read(
     snapshot: Mapping[str, Any], roles: list[Role]
 ) -> CurrentUserRead:
+    """Преобразует снимок пользователя и активные роли в схему текущего пользователя.
+
+    Args:
+        snapshot: Снимок пользователя.
+        roles: Список активных ролей пользователя.
+
+    Returns:
+        Схема текущего пользователя.
+    """
+
     payload = dict(snapshot)
     payload["roles"] = [_role_list_item(role) for role in roles]
     return CurrentUserRead.model_validate(payload)
 
 
 def _role_list_item(role: Role) -> RoleListItem:
+    """Преобразует роль в элемент списка ролей.
+
+    Args:
+        role: ORM-модель роли.
+
+    Returns:
+        Элемент списка ролей.
+    """
+
     return RoleListItem.model_validate(_role_snapshot(role))
 
 
 def _audit_user(snapshot: Mapping[str, Any]) -> dict[str, Any]:
+    """Формирует метаданные пользователя для аудита.
+
+    Args:
+        snapshot: Снимок пользователя.
+
+    Returns:
+        Словарь с идентификатором, email, username и статусом пользователя.
+    """
+
     return {
         "id": str(snapshot["id"]),
         "email": str(snapshot["email"]),
@@ -1042,6 +1638,17 @@ def _audit_user(snapshot: Mapping[str, Any]) -> dict[str, Any]:
 def _matches_created_range(
     snapshot: Mapping[str, Any], params: UserQueryParams
 ) -> bool:
+    """Проверяет соответствие пользователя диапазону даты создания.
+
+    Args:
+        snapshot: Снимок пользователя.
+        params: Параметры фильтрации пользователей.
+
+    Returns:
+        True, если дата создания пользователя попадает в заданный диапазон
+        или дата создания отсутствует.
+    """
+
     created_at = snapshot.get("created_at")
     if not isinstance(created_at, datetime):
         return True
@@ -1057,6 +1664,16 @@ def get_users_service(
     uow_factory: UnitOfWorkFactory | None = None,
     audit_service: AuditService | None = None,
 ) -> UsersService:
+    """Создает экземпляр сервиса пользователей.
+
+    Args:
+        uow_factory: Фабрика Unit of Work для нового экземпляра сервиса.
+        audit_service: Сервис аудита для нового экземпляра сервиса.
+
+    Returns:
+        Экземпляр UsersService.
+    """
+
     return UsersService(uow_factory=uow_factory, audit_service=audit_service)
 
 

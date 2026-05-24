@@ -1,3 +1,13 @@
+"""Сервис проверки доступа к узлам файловой системы LocalCloud.
+
+Модуль содержит сервисный слой для проверки прав пользователя на действия с
+узлами файловой системы. Сервис загружает необходимые данные из базы через
+UnitOfWork, преобразует ORM-модели в lightweight-объекты доступа и делегирует
+непосредственную проверку прав модулю `security.permissions`.
+
+Сервис не зависит от FastAPI и возвращает DTO из `schemas.permissions`.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Iterable
@@ -52,12 +62,27 @@ REPOSITORY_PAGE_LIMIT = 1000
 
 @dataclass(frozen=True, slots=True)
 class AccessRole:
+    """Lightweight-представление роли для проверки доступа.
+
+    Attributes:
+        code: Стабильный код роли.
+        name: Техническое имя роли.
+    """
+
     code: str
     name: str
 
 
 @dataclass(frozen=True, slots=True)
 class AccessUser:
+    """Lightweight-представление пользователя для проверки доступа.
+
+    Attributes:
+        id: Идентификатор пользователя.
+        status: Статус пользователя.
+        roles: Активные роли пользователя.
+    """
+
     id: UUID
     status: UserStatus | str
     roles: tuple[AccessRole, ...]
@@ -65,6 +90,16 @@ class AccessUser:
 
 @dataclass(frozen=True, slots=True)
 class AccessNode:
+    """Lightweight-представление узла файловой системы для проверки доступа.
+
+    Attributes:
+        id: Идентификатор узла.
+        owner_id: Идентификатор владельца узла.
+        node_type: Тип узла файловой системы.
+        visibility: Видимость узла.
+        is_deleted: Признак удаления узла.
+    """
+
     id: UUID
     owner_id: UUID
     node_type: NodeType | str
@@ -74,6 +109,21 @@ class AccessNode:
 
 @dataclass(frozen=True, slots=True)
 class AccessPermission:
+    """Lightweight-представление разрешения на доступ к узлу.
+
+    Attributes:
+        id: Идентификатор разрешения.
+        user_id: Идентификатор пользователя, которому выдано разрешение.
+        permission_level: Уровень разрешения.
+        can_read: Разрешено ли чтение.
+        can_download: Разрешено ли скачивание.
+        can_write: Разрешена ли запись.
+        can_delete: Разрешено ли удаление.
+        can_share: Разрешено ли предоставление доступа.
+        revoked_at: Дата отзыва разрешения.
+        expires_at: Дата истечения срока действия разрешения.
+    """
+
     id: UUID
     user_id: UUID
     permission_level: PermissionLevel | str
@@ -86,6 +136,16 @@ class AccessPermission:
     expires_at: datetime | None
 
     def is_active_at(self, moment: datetime) -> bool:
+        """Проверяет, активно ли разрешение в указанный момент времени.
+
+        Args:
+            moment: Момент времени для проверки активности разрешения.
+
+        Returns:
+            `True`, если разрешение не отозвано и не истекло к указанному
+            моменту.
+        """
+
         if self.revoked_at is not None:
             return False
         if self.expires_at is not None and self.expires_at <= moment:
@@ -94,9 +154,25 @@ class AccessPermission:
 
 
 class AccessService:
-    """Single service entry point for checking access to filesystem nodes."""
+    """Единая точка входа для проверки доступа к узлам файловой системы.
+
+    Сервис загружает узел, пользователя, роли и разрешения, после чего
+    выполняет проверку через `check_node_permission()`. При необходимости
+    сервис может возвращать allow/deny DTO или выбрасывать сервисную ошибку
+    при отказе в доступе.
+
+    Attributes:
+        uow_factory: Фабрика UnitOfWork для создания транзакционных контекстов.
+    """
 
     def __init__(self, *, uow_factory: UnitOfWorkFactory | None = None) -> None:
+        """Инициализирует сервис доступа.
+
+        Args:
+            uow_factory: Фабрика UnitOfWork. Если не передана, создаётся
+                стандартная фабрика через `create_unit_of_work_factory()`.
+        """
+
         self.uow_factory = uow_factory or create_unit_of_work_factory()
 
     async def check_node_access(
@@ -105,7 +181,19 @@ class AccessService:
         *,
         uow: Any | None = None,
     ) -> PermissionCheckResponse:
-        """Check access using the public permissions DTO."""
+        """Проверяет доступ по публичному DTO запроса.
+
+        Args:
+            request: DTO с параметрами проверки доступа.
+            uow: Опциональный внешний UnitOfWork. Если передан, проверка
+                выполняется в его транзакционном контексте.
+
+        Returns:
+            DTO с результатом проверки доступа.
+
+        Raises:
+            ServiceError: Если проверку доступа не удалось выполнить.
+        """
 
         return await self.check_access(
             node_id=request.node_id,
@@ -126,7 +214,24 @@ class AccessService:
         allow_public: bool = True,
         uow: Any | None = None,
     ) -> PermissionCheckResponse:
-        """Return an allow/deny DTO without raising on denied access."""
+        """Возвращает allow/deny результат без исключения при отказе.
+
+        Args:
+            node_id: Идентификатор проверяемого узла.
+            user_id: Идентификатор пользователя. `None` означает анонимного
+                пользователя.
+            action: Действие, для которого проверяется доступ.
+            allow_deleted: Можно ли проверять доступ к удалённым узлам.
+            allow_public: Можно ли учитывать публичную видимость узла.
+            uow: Опциональный внешний UnitOfWork.
+
+        Returns:
+            DTO с результатом проверки доступа.
+
+        Raises:
+            PermissionServiceError: Если произошла ошибка проверки разрешений.
+            ServiceError: Если проверку доступа не удалось выполнить.
+        """
 
         operation = "check_access"
         try:
@@ -165,7 +270,24 @@ class AccessService:
         allow_public: bool = True,
         uow: Any | None = None,
     ) -> PermissionCheckResponse:
-        """Require access and raise PermissionServiceError when denied."""
+        """Требует доступ и выбрасывает ошибку при отказе.
+
+        Args:
+            node_id: Идентификатор проверяемого узла.
+            user_id: Идентификатор пользователя. `None` означает анонимного
+                пользователя.
+            action: Действие, для которого требуется доступ.
+            allow_deleted: Можно ли проверять доступ к удалённым узлам.
+            allow_public: Можно ли учитывать публичную видимость узла.
+            uow: Опциональный внешний UnitOfWork.
+
+        Returns:
+            DTO с успешным результатом проверки доступа.
+
+        Raises:
+            PermissionServiceError: Если доступ запрещён.
+            ServiceError: Если проверку доступа не удалось выполнить.
+        """
 
         operation = "require_access"
         response = await self.check_access(
@@ -190,10 +312,28 @@ class AccessService:
         allow_public: bool = True,
         uow: Any | None = None,
     ) -> FileSystemNode:
-        """Return a node after access is granted.
+        """Возвращает узел файловой системы после успешной проверки доступа.
 
-        When `uow` is passed, the returned ORM object belongs to that same
-        transaction and can be safely reused by the caller.
+        Если передан внешний `uow`, возвращённый ORM-объект принадлежит тому же
+        транзакционному контексту и может безопасно использоваться вызывающим
+        кодом.
+
+        Args:
+            node_id: Идентификатор узла.
+            user_id: Идентификатор пользователя. `None` означает анонимного
+                пользователя.
+            action: Действие, для которого требуется доступ к узлу.
+            allow_deleted: Можно ли возвращать удалённый узел.
+            allow_public: Можно ли учитывать публичную видимость узла.
+            uow: Опциональный внешний UnitOfWork.
+
+        Returns:
+            ORM-модель доступного узла файловой системы.
+
+        Raises:
+            NotFoundServiceError: Если узел не найден.
+            PermissionServiceError: Если доступ к узлу запрещён.
+            ServiceError: Если узел не удалось получить.
         """
 
         operation = "get_accessible_node"
@@ -262,7 +402,23 @@ class AccessService:
         allow_public: bool = True,
         uow: Any | None = None,
     ) -> EffectivePermissionRead:
-        """Build effective flags for a user on a node."""
+        """Формирует эффективные флаги доступа пользователя к узлу.
+
+        Args:
+            node_id: Идентификатор узла.
+            user_id: Идентификатор пользователя. `None` означает анонимного
+                пользователя.
+            allow_deleted: Можно ли учитывать удалённый узел.
+            allow_public: Можно ли учитывать публичную видимость узла.
+            uow: Опциональный внешний UnitOfWork.
+
+        Returns:
+            DTO с эффективным уровнем доступа и флагами разрешённых действий.
+
+        Raises:
+            PermissionServiceError: Если произошла ошибка проверки разрешений.
+            ServiceError: Если эффективные права не удалось получить.
+        """
 
         operation = "get_effective_permissions"
         try:
@@ -296,6 +452,17 @@ class AccessService:
     async def can_read_node(
         self, *, node_id: UUID, user_id: UUID | None, uow: Any | None = None
     ) -> bool:
+        """Проверяет, может ли пользователь читать узел.
+
+        Args:
+            node_id: Идентификатор узла.
+            user_id: Идентификатор пользователя.
+            uow: Опциональный внешний UnitOfWork.
+
+        Returns:
+            `True`, если чтение разрешено.
+        """
+
         return await self._can(
             node_id=node_id, user_id=user_id, action=PermissionAction.READ, uow=uow
         )
@@ -303,6 +470,17 @@ class AccessService:
     async def can_download_node(
         self, *, node_id: UUID, user_id: UUID | None, uow: Any | None = None
     ) -> bool:
+        """Проверяет, может ли пользователь скачивать узел.
+
+        Args:
+            node_id: Идентификатор узла.
+            user_id: Идентификатор пользователя.
+            uow: Опциональный внешний UnitOfWork.
+
+        Returns:
+            `True`, если скачивание разрешено.
+        """
+
         return await self._can(
             node_id=node_id, user_id=user_id, action=PermissionAction.DOWNLOAD, uow=uow
         )
@@ -310,6 +488,17 @@ class AccessService:
     async def can_write_node(
         self, *, node_id: UUID, user_id: UUID | None, uow: Any | None = None
     ) -> bool:
+        """Проверяет, может ли пользователь изменять узел.
+
+        Args:
+            node_id: Идентификатор узла.
+            user_id: Идентификатор пользователя.
+            uow: Опциональный внешний UnitOfWork.
+
+        Returns:
+            `True`, если запись разрешена.
+        """
+
         return await self._can(
             node_id=node_id, user_id=user_id, action=PermissionAction.WRITE, uow=uow
         )
@@ -322,6 +511,18 @@ class AccessService:
         allow_deleted: bool = False,
         uow: Any | None = None,
     ) -> bool:
+        """Проверяет, может ли пользователь удалить узел.
+
+        Args:
+            node_id: Идентификатор узла.
+            user_id: Идентификатор пользователя.
+            allow_deleted: Можно ли проверять доступ к уже удалённому узлу.
+            uow: Опциональный внешний UnitOfWork.
+
+        Returns:
+            `True`, если удаление разрешено.
+        """
+
         return await self._can(
             node_id=node_id,
             user_id=user_id,
@@ -333,6 +534,17 @@ class AccessService:
     async def can_share_node(
         self, *, node_id: UUID, user_id: UUID | None, uow: Any | None = None
     ) -> bool:
+        """Проверяет, может ли пользователь делиться доступом к узлу.
+
+        Args:
+            node_id: Идентификатор узла.
+            user_id: Идентификатор пользователя.
+            uow: Опциональный внешний UnitOfWork.
+
+        Returns:
+            `True`, если предоставление доступа разрешено.
+        """
+
         return await self._can(
             node_id=node_id, user_id=user_id, action=PermissionAction.SHARE, uow=uow
         )
@@ -340,6 +552,17 @@ class AccessService:
     async def can_manage_node(
         self, *, node_id: UUID, user_id: UUID | None, uow: Any | None = None
     ) -> bool:
+        """Проверяет, может ли пользователь управлять узлом.
+
+        Args:
+            node_id: Идентификатор узла.
+            user_id: Идентификатор пользователя.
+            uow: Опциональный внешний UnitOfWork.
+
+        Returns:
+            `True`, если управление узлом разрешено.
+        """
+
         return await self._can(
             node_id=node_id, user_id=user_id, action=PermissionAction.MANAGE, uow=uow
         )
@@ -347,6 +570,20 @@ class AccessService:
     async def require_read_node(
         self, *, node_id: UUID, user_id: UUID | None, uow: Any | None = None
     ) -> PermissionCheckResponse:
+        """Требует право чтения узла.
+
+        Args:
+            node_id: Идентификатор узла.
+            user_id: Идентификатор пользователя.
+            uow: Опциональный внешний UnitOfWork.
+
+        Returns:
+            DTO успешной проверки доступа.
+
+        Raises:
+            PermissionServiceError: Если чтение запрещено.
+        """
+
         return await self.require_access(
             node_id=node_id, user_id=user_id, action=PermissionAction.READ, uow=uow
         )
@@ -354,6 +591,20 @@ class AccessService:
     async def require_download_node(
         self, *, node_id: UUID, user_id: UUID | None, uow: Any | None = None
     ) -> PermissionCheckResponse:
+        """Требует право скачивания узла.
+
+        Args:
+            node_id: Идентификатор узла.
+            user_id: Идентификатор пользователя.
+            uow: Опциональный внешний UnitOfWork.
+
+        Returns:
+            DTO успешной проверки доступа.
+
+        Raises:
+            PermissionServiceError: Если скачивание запрещено.
+        """
+
         return await self.require_access(
             node_id=node_id, user_id=user_id, action=PermissionAction.DOWNLOAD, uow=uow
         )
@@ -361,6 +612,20 @@ class AccessService:
     async def require_write_node(
         self, *, node_id: UUID, user_id: UUID | None, uow: Any | None = None
     ) -> PermissionCheckResponse:
+        """Требует право изменения узла.
+
+        Args:
+            node_id: Идентификатор узла.
+            user_id: Идентификатор пользователя.
+            uow: Опциональный внешний UnitOfWork.
+
+        Returns:
+            DTO успешной проверки доступа.
+
+        Raises:
+            PermissionServiceError: Если запись запрещена.
+        """
+
         return await self.require_access(
             node_id=node_id, user_id=user_id, action=PermissionAction.WRITE, uow=uow
         )
@@ -373,6 +638,21 @@ class AccessService:
         allow_deleted: bool = False,
         uow: Any | None = None,
     ) -> PermissionCheckResponse:
+        """Требует право удаления узла.
+
+        Args:
+            node_id: Идентификатор узла.
+            user_id: Идентификатор пользователя.
+            allow_deleted: Можно ли проверять доступ к уже удалённому узлу.
+            uow: Опциональный внешний UnitOfWork.
+
+        Returns:
+            DTO успешной проверки доступа.
+
+        Raises:
+            PermissionServiceError: Если удаление запрещено.
+        """
+
         return await self.require_access(
             node_id=node_id,
             user_id=user_id,
@@ -384,6 +664,20 @@ class AccessService:
     async def require_share_node(
         self, *, node_id: UUID, user_id: UUID | None, uow: Any | None = None
     ) -> PermissionCheckResponse:
+        """Требует право предоставления доступа к узлу.
+
+        Args:
+            node_id: Идентификатор узла.
+            user_id: Идентификатор пользователя.
+            uow: Опциональный внешний UnitOfWork.
+
+        Returns:
+            DTO успешной проверки доступа.
+
+        Raises:
+            PermissionServiceError: Если предоставление доступа запрещено.
+        """
+
         return await self.require_access(
             node_id=node_id, user_id=user_id, action=PermissionAction.SHARE, uow=uow
         )
@@ -391,6 +685,20 @@ class AccessService:
     async def require_manage_node(
         self, *, node_id: UUID, user_id: UUID | None, uow: Any | None = None
     ) -> PermissionCheckResponse:
+        """Требует право управления узлом.
+
+        Args:
+            node_id: Идентификатор узла.
+            user_id: Идентификатор пользователя.
+            uow: Опциональный внешний UnitOfWork.
+
+        Returns:
+            DTO успешной проверки доступа.
+
+        Raises:
+            PermissionServiceError: Если управление узлом запрещено.
+        """
+
         return await self.require_access(
             node_id=node_id, user_id=user_id, action=PermissionAction.MANAGE, uow=uow
         )
@@ -405,6 +713,20 @@ class AccessService:
         allow_public: bool = True,
         uow: Any | None = None,
     ) -> bool:
+        """Выполняет bool-проверку доступа для конкретного действия.
+
+        Args:
+            node_id: Идентификатор узла.
+            user_id: Идентификатор пользователя.
+            action: Проверяемое действие.
+            allow_deleted: Можно ли проверять доступ к удалённым узлам.
+            allow_public: Можно ли учитывать публичную видимость узла.
+            uow: Опциональный внешний UnitOfWork.
+
+        Returns:
+            `True`, если действие разрешено.
+        """
+
         response = await self.check_access(
             node_id=node_id,
             user_id=user_id,
@@ -425,6 +747,23 @@ class AccessService:
         allow_public: bool,
         uow: Any | None,
     ) -> PermissionCheckResult:
+        """Выполняет низкоуровневую проверку доступа к узлу.
+
+        Args:
+            node_id: Идентификатор узла.
+            user_id: Идентификатор пользователя.
+            action: Проверяемое действие.
+            allow_deleted: Можно ли проверять доступ к удалённым узлам.
+            allow_public: Можно ли учитывать публичную видимость узла.
+            uow: Опциональный внешний UnitOfWork.
+
+        Returns:
+            Результат проверки доступа из слоя `security.permissions`.
+
+        Raises:
+            ServiceError: Если результат проверки не был сформирован.
+        """
+
         result: PermissionCheckResult | None = None
 
         if uow is not None:
@@ -469,6 +808,20 @@ class AccessService:
         allow_deleted: bool,
         allow_public: bool,
     ) -> PermissionCheckResult:
+        """Проверяет доступ к уже загруженному узлу.
+
+        Args:
+            uow: Активный UnitOfWork для загрузки пользователя и разрешений.
+            node: Уже загруженная ORM-модель узла файловой системы.
+            user_id: Идентификатор пользователя.
+            action: Проверяемое действие.
+            allow_deleted: Можно ли разрешать доступ к удалённому узлу.
+            allow_public: Можно ли учитывать публичную видимость узла.
+
+        Returns:
+            Результат проверки доступа.
+        """
+
         access_node = _node_snapshot(node)
         access_user = await self._load_access_user(uow, user_id)
         permissions = await self._load_node_permissions(uow, node.id)
@@ -485,6 +838,20 @@ class AccessService:
     async def _load_node(
         self, uow: Any, node_id: UUID, *, allow_deleted: bool
     ) -> FileSystemNode:
+        """Загружает узел файловой системы для проверки доступа.
+
+        Args:
+            uow: Активный UnitOfWork с репозиторием узлов.
+            node_id: Идентификатор узла.
+            allow_deleted: Если `True`, разрешает загрузку удалённого узла.
+
+        Returns:
+            ORM-модель узла файловой системы.
+
+        Raises:
+            DatabaseError: Если узел не найден или произошла ошибка базы данных.
+        """
+
         if allow_deleted:
             return await uow.nodes.get_required_by_id(node_id)
         return await uow.nodes.get_required_active_node_by_id(node_id)
@@ -492,6 +859,22 @@ class AccessService:
     async def _load_access_user(
         self, uow: Any, user_id: UUID | None
     ) -> AccessUser | None:
+        """Загружает lightweight-представление пользователя для проверки доступа.
+
+        Args:
+            uow: Активный UnitOfWork с репозиториями пользователей и ролей.
+            user_id: Идентификатор пользователя. Если `None`, пользователь
+                считается анонимным.
+
+        Returns:
+            `AccessUser` с активными ролями пользователя или `None` для
+            анонимного пользователя.
+
+        Raises:
+            DatabaseError: Если пользователь не найден или произошла ошибка базы
+                данных.
+        """
+
         if user_id is None:
             return None
 
@@ -512,6 +895,19 @@ class AccessService:
     async def _load_node_permissions(
         self, uow: Any, node_id: UUID
     ) -> tuple[AccessPermission, ...]:
+        """Загружает все разрешения доступа для узла.
+
+        Разрешения загружаются постранично, чтобы не зависеть от ограничений
+        репозитория на размер одной выборки.
+
+        Args:
+            uow: Активный UnitOfWork с репозиторием разрешений.
+            node_id: Идентификатор узла.
+
+        Returns:
+            Кортеж lightweight-представлений разрешений узла.
+        """
+
         permissions: list[AccessPermission] = []
         offset = 0
         while True:
@@ -531,6 +927,16 @@ class AccessService:
     def _denied_response_error(
         response: PermissionCheckResponse, *, operation: str
     ) -> PermissionServiceError:
+        """Создаёт сервисную ошибку из deny-ответа проверки доступа.
+
+        Args:
+            response: DTO с отрицательным результатом проверки доступа.
+            operation: Название операции сервиса.
+
+        Returns:
+            Ошибка `PermissionServiceError` с деталями отказа.
+        """
+
         return PermissionServiceError(
             response.message or "Недостаточно прав для доступа к узлу.",
             user_id=response.user_id,
@@ -546,6 +952,16 @@ class AccessService:
     def _denied_result_error(
         result: PermissionCheckResult, *, operation: str
     ) -> PermissionServiceError:
+        """Создаёт сервисную ошибку из deny-результата проверки доступа.
+
+        Args:
+            result: Результат проверки доступа.
+            operation: Название операции сервиса.
+
+        Returns:
+            Ошибка `PermissionServiceError` с деталями отказа.
+        """
+
         return PermissionServiceError(
             _message_for_denied_reason(result.reason),
             user_id=result.user_id,
@@ -561,6 +977,16 @@ class AccessService:
     def _permission_error(
         exc: PermissionCheckError, *, operation: str
     ) -> PermissionServiceError:
+        """Преобразует ошибку проверки прав в сервисную ошибку.
+
+        Args:
+            exc: Ошибка слоя `security.permissions`.
+            operation: Название операции сервиса.
+
+        Returns:
+            Ошибка `PermissionServiceError`.
+        """
+
         return PermissionServiceError(
             str(exc),
             details={"service": SERVICE_NAME, "operation": operation, **exc.to_dict()},
@@ -571,6 +997,17 @@ class AccessService:
     def _database_error(
         exc: DatabaseError, *, operation: str, message: str
     ) -> ServiceError:
+        """Преобразует ошибку базы данных в сервисную ошибку доступа.
+
+        Args:
+            exc: Исходная ошибка базы данных.
+            operation: Название операции сервиса.
+            message: Сообщение для итоговой сервисной ошибки.
+
+        Returns:
+            Сервисная ошибка, соответствующая ошибке базы данных.
+        """
+
         if isinstance(exc, EntityNotFoundError):
             return NotFoundServiceError(
                 message,
@@ -586,6 +1023,17 @@ class AccessService:
     def _unexpected_error(
         exc: Exception, *, operation: str, message: str
     ) -> ServiceError:
+        """Логирует непредвиденную ошибку и преобразует её в `ServiceError`.
+
+        Args:
+            exc: Исходное исключение.
+            operation: Название операции сервиса.
+            message: Сообщение для логирования и итоговой сервисной ошибки.
+
+        Returns:
+            Сервисная ошибка, созданная из исходного исключения.
+        """
+
         logger.exception(
             message,
             extra={"operation": operation, "error_type": exc.__class__.__name__},
@@ -596,6 +1044,15 @@ class AccessService:
 
 
 def _node_snapshot(node: FileSystemNode) -> AccessNode:
+    """Создаёт lightweight-представление узла файловой системы.
+
+    Args:
+        node: ORM-модель узла файловой системы.
+
+    Returns:
+        Объект `AccessNode` для передачи в слой проверки прав.
+    """
+
     return AccessNode(
         id=node.id,
         owner_id=node.owner_id,
@@ -606,6 +1063,15 @@ def _node_snapshot(node: FileSystemNode) -> AccessNode:
 
 
 def _permission_snapshot(permission: Any) -> AccessPermission:
+    """Создаёт lightweight-представление разрешения доступа.
+
+    Args:
+        permission: ORM-модель или объект разрешения с ожидаемыми атрибутами.
+
+    Returns:
+        Объект `AccessPermission` для передачи в слой проверки прав.
+    """
+
     return AccessPermission(
         id=permission.id,
         user_id=permission.user_id,
@@ -621,6 +1087,18 @@ def _permission_snapshot(permission: Any) -> AccessPermission:
 
 
 def _check_response(result: PermissionCheckResult) -> PermissionCheckResponse:
+    """Преобразует результат проверки доступа в DTO ответа.
+
+    Args:
+        result: Результат проверки доступа.
+
+    Returns:
+        DTO `PermissionCheckResponse`.
+
+    Raises:
+        PermissionDeniedError: Если результат не содержит идентификатор узла.
+    """
+
     return PermissionCheckResponse(
         allowed=result.allowed,
         node_id=_require_node_id(result),
@@ -635,6 +1113,18 @@ def _check_response(result: PermissionCheckResult) -> PermissionCheckResponse:
 def _effective_permission_read(
     result: PermissionCheckResult,
 ) -> EffectivePermissionRead:
+    """Преобразует результат проверки в DTO эффективных прав.
+
+    Args:
+        result: Результат проверки доступа, обычно для действия `READ`.
+
+    Returns:
+        DTO с эффективными флагами доступа к узлу.
+
+    Raises:
+        PermissionDeniedError: Если результат не содержит идентификатор узла.
+    """
+
     can_read = _allows(result, PermissionAction.READ)
     can_download = _allows(result, PermissionAction.DOWNLOAD)
     can_write = _allows(result, PermissionAction.WRITE)
@@ -661,6 +1151,17 @@ def _effective_permission_read(
 
 
 def _allows(result: PermissionCheckResult, action: PermissionAction) -> bool:
+    """Проверяет, разрешено ли действие на основе результата проверки.
+
+    Args:
+        result: Результат проверки доступа.
+        action: Действие, для которого вычисляется эффективный флаг.
+
+    Returns:
+        `True`, если действие разрешено с учётом владельца, администратора,
+        публичного доступа или уровня разрешения.
+    """
+
     if result.denied:
         return False
     if result.is_admin or result.is_owner:
@@ -673,6 +1174,19 @@ def _allows(result: PermissionCheckResult, action: PermissionAction) -> bool:
 
 
 def _require_node_id(result: PermissionCheckResult) -> UUID:
+    """Возвращает идентификатор узла из результата проверки.
+
+    Args:
+        result: Результат проверки доступа.
+
+    Returns:
+        Идентификатор узла.
+
+    Raises:
+        PermissionDeniedError: Если результат проверки не содержит
+            идентификатор узла.
+    """
+
     if result.node_id is None:
         raise PermissionDeniedError(
             "Результат проверки доступа не содержит идентификатор узла.",
@@ -684,6 +1198,16 @@ def _require_node_id(result: PermissionCheckResult) -> UUID:
 
 
 def _message_for_denied_reason(reason: PermissionDeniedReason | None) -> str:
+    """Возвращает человекочитаемое сообщение для причины отказа.
+
+    Args:
+        reason: Причина отказа в доступе.
+
+    Returns:
+        Сообщение об отказе в доступе. Если причина неизвестна или отсутствует,
+        возвращается сообщение по умолчанию.
+    """
+
     default_message = "Недостаточно прав для доступа к узлу."
     messages = {
         PermissionDeniedReason.ANONYMOUS_USER: "Требуется авторизация для доступа к узлу.",
@@ -706,6 +1230,16 @@ def _message_for_denied_reason(reason: PermissionDeniedReason | None) -> str:
 def get_access_service(
     *, uow_factory: UnitOfWorkFactory | None = None
 ) -> AccessService:
+    """Создаёт экземпляр сервиса доступа.
+
+    Args:
+        uow_factory: Фабрика UnitOfWork. Если не передана, сервис создаст
+            стандартную фабрику самостоятельно.
+
+    Returns:
+        Экземпляр `AccessService`.
+    """
+
     return AccessService(uow_factory=uow_factory)
 
 

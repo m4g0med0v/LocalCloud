@@ -1,3 +1,19 @@
+"""Сервис аудита LocalCloud.
+
+Модуль содержит сервисный слой для записи, чтения, фильтрации, агрегации,
+экспорта и очистки событий аудита. Сервис не зависит от FastAPI и работает
+через UnitOfWork и репозиторий аудита, возвращая DTO из `schemas.audit`.
+
+Основные возможности:
+    * запись пользовательских, системных, успешных, неуспешных и запрещённых
+      событий;
+    * получение одного события аудита по идентификатору;
+    * постраничный просмотр журнала аудита;
+    * построение сводки по событиям;
+    * экспорт журнала в JSON или CSV;
+    * очистка устаревших событий аудита.
+"""
+
 from __future__ import annotations
 
 import csv
@@ -42,12 +58,14 @@ AuditExportPayload = dict[str, Any]
 
 
 class AuditService:
-    """
-    Service-layer facade for LocalCloud audit events.
+    """Сервисный фасад для работы с событиями аудита LocalCloud.
 
-    The service does not import FastAPI and does not build SQLAlchemy queries
-    directly. Persistence goes through UnitOfWork and AuditLogRepository, while
-    API-facing objects are returned as schemas.audit DTOs.
+    Сервис не импортирует FastAPI и не строит SQLAlchemy-запросы напрямую.
+    Все операции сохранения и чтения выполняются через `UnitOfWork` и
+    `AuditLogRepository`, а наружу возвращаются DTO из `schemas.audit`.
+
+    Attributes:
+        uow_factory: Фабрика UnitOfWork для создания транзакционных контекстов.
     """
 
     _SCAN_LIMIT = 100_000
@@ -71,6 +89,13 @@ class AuditService:
     )
 
     def __init__(self, *, uow_factory: UnitOfWorkFactory | None = None) -> None:
+        """Инициализирует сервис аудита.
+
+        Args:
+            uow_factory: Фабрика UnitOfWork. Если не передана, создаётся
+                стандартная фабрика через `create_unit_of_work_factory()`.
+        """
+
         self.uow_factory = uow_factory or create_unit_of_work_factory()
 
     async def log_event(
@@ -90,29 +115,52 @@ class AuditService:
         error_code: str | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> AuditLogRead:
-        """Create and persist one audit event."""
+        """Создаёт и сохраняет одно событие аудита.
+
+        Args:
+            action: Тип действия, которое фиксируется в журнале аудита.
+            result: Результат действия.
+            user_id: Идентификатор пользователя, связанного с событием.
+            entity_type: Тип бизнес-сущности, связанной с событием.
+            entity_id: Идентификатор бизнес-сущности.
+            resource_type: Тип ресурса, связанного с событием.
+            request_id: Идентификатор HTTP-запроса или внешней операции.
+            correlation_id: Идентификатор корреляции для связанных операций.
+            ip_address: IP-адрес клиента.
+            user_agent: User-Agent клиента.
+            message: Человекочитаемое описание события.
+            error_code: Машинно-читаемый код ошибки, если событие неуспешное.
+            metadata: Дополнительные JSON-сериализуемые данные события.
+
+        Returns:
+            DTO созданного события аудита.
+
+        Raises:
+            ServiceError: Если созданное событие не удалось получить после
+                сохранения или произошла сервисная ошибка.
+            DatabaseError: Преобразуется в сервисную ошибку через
+                `service_error_from_database()`.
+        """
 
         created_read: AuditLogRead | None = None
         try:
-            audit_log = self._build_audit_log(
-                user_id=user_id,
-                action=action,
-                result=result,
-                entity_type=entity_type,
-                entity_id=entity_id,
-                resource_type=resource_type,
-                request_id=request_id,
-                correlation_id=correlation_id,
-                ip_address=ip_address,
-                user_agent=user_agent,
-                message=message,
-                error_code=error_code,
-                metadata=metadata,
-            )
-
             async with self.uow_factory() as uow:
-                created_log = await uow.audit.create(
-                    audit_log, flush=True, refresh=True
+                created_log = await uow.audit.create_event(
+                    user_id=user_id,
+                    action=action,
+                    result=result,
+                    entity_type=entity_type,
+                    entity_id=entity_id,
+                    resource_type=resource_type,
+                    request_id=request_id,
+                    correlation_id=correlation_id,
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                    message=self._normalize_optional_string(message),
+                    error_code=error_code,
+                    metadata=self._normalize_metadata(metadata),
+                    flush=True,
+                    refresh=True,
                 )
                 snapshot = _audit_log_snapshot(created_log)
                 await uow.commit()
@@ -143,7 +191,17 @@ class AuditService:
             ) from exc
 
     async def log_from_schema(self, data: AuditLogCreate) -> AuditLogRead:
-        """Create an audit event from schemas.audit.AuditLogCreate."""
+        """Создаёт событие аудита из DTO `AuditLogCreate`.
+
+        Args:
+            data: Входная схема с данными события аудита.
+
+        Returns:
+            DTO созданного события аудита.
+
+        Raises:
+            ServiceError: Если событие не удалось сохранить.
+        """
 
         return await self.log_event(
             user_id=data.user_id,
@@ -162,6 +220,20 @@ class AuditService:
         )
 
     async def log_success(self, *, action: AuditAction, **kwargs: Any) -> AuditLogRead:
+        """Создаёт успешное событие аудита.
+
+        Args:
+            action: Тип выполненного действия.
+            **kwargs: Дополнительные параметры события, передаваемые в
+                `log_event()`.
+
+        Returns:
+            DTO созданного успешного события аудита.
+
+        Raises:
+            ServiceError: Если событие не удалось сохранить.
+        """
+
         return await self.log_event(action=action, result=AuditResult.SUCCESS, **kwargs)
 
     async def log_failure(
@@ -171,11 +243,40 @@ class AuditService:
         error_code: str | None = None,
         **kwargs: Any,
     ) -> AuditLogRead:
+        """Создаёт неуспешное событие аудита.
+
+        Args:
+            action: Тип действия, завершившегося ошибкой.
+            error_code: Машинно-читаемый код ошибки.
+            **kwargs: Дополнительные параметры события, передаваемые в
+                `log_event()`.
+
+        Returns:
+            DTO созданного неуспешного события аудита.
+
+        Raises:
+            ServiceError: Если событие не удалось сохранить.
+        """
+
         return await self.log_event(
             action=action, result=AuditResult.FAILURE, error_code=error_code, **kwargs
         )
 
     async def log_denied(self, *, action: AuditAction, **kwargs: Any) -> AuditLogRead:
+        """Создаёт событие аудита для отказа в доступе.
+
+        Args:
+            action: Тип действия, которое было запрещено.
+            **kwargs: Дополнительные параметры события, передаваемые в
+                `log_event()`.
+
+        Returns:
+            DTO созданного события отказа.
+
+        Raises:
+            ServiceError: Если событие не удалось сохранить.
+        """
+
         return await self.log_event(action=action, result=AuditResult.DENIED, **kwargs)
 
     async def log_system_event(
@@ -192,6 +293,27 @@ class AuditService:
         error_code: str | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> AuditLogRead:
+        """Создаёт системное событие аудита без привязки к пользователю.
+
+        Args:
+            action: Тип системного действия.
+            result: Результат системного действия.
+            entity_type: Тип бизнес-сущности, связанной с событием.
+            entity_id: Идентификатор бизнес-сущности.
+            resource_type: Тип ресурса, связанного с событием.
+            request_id: Идентификатор запроса.
+            correlation_id: Идентификатор корреляции.
+            message: Человекочитаемое описание события.
+            error_code: Машинно-читаемый код ошибки.
+            metadata: Дополнительные JSON-сериализуемые данные события.
+
+        Returns:
+            DTO созданного системного события аудита.
+
+        Raises:
+            ServiceError: Если событие не удалось сохранить.
+        """
+
         return await self.log_event(
             action=action,
             result=result,
@@ -223,6 +345,30 @@ class AuditService:
         error_code: str | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> AuditLogRead:
+        """Создаёт пользовательское событие аудита.
+
+        Args:
+            user_id: Идентификатор пользователя, связанного с событием.
+            action: Тип пользовательского действия.
+            result: Результат пользовательского действия.
+            entity_type: Тип бизнес-сущности, связанной с событием.
+            entity_id: Идентификатор бизнес-сущности.
+            resource_type: Тип ресурса, связанного с событием.
+            request_id: Идентификатор запроса.
+            correlation_id: Идентификатор корреляции.
+            ip_address: IP-адрес клиента.
+            user_agent: User-Agent клиента.
+            message: Человекочитаемое описание события.
+            error_code: Машинно-читаемый код ошибки.
+            metadata: Дополнительные JSON-сериализуемые данные события.
+
+        Returns:
+            DTO созданного пользовательского события аудита.
+
+        Raises:
+            ServiceError: Если событие не удалось сохранить.
+        """
+
         return await self.log_event(
             action=action,
             result=result,
@@ -240,7 +386,18 @@ class AuditService:
         )
 
     async def get_log(self, log_id: UUID) -> AuditLogRead:
-        """Return one audit event by id."""
+        """Возвращает одно событие аудита по идентификатору.
+
+        Args:
+            log_id: Идентификатор события аудита.
+
+        Returns:
+            DTO найденного события аудита.
+
+        Raises:
+            NotFoundServiceError: Если событие аудита не найдено.
+            ServiceError: Если событие не удалось получить.
+        """
 
         log_read: AuditLogRead | None = None
         try:
@@ -281,7 +438,17 @@ class AuditService:
     async def list_logs(
         self, params: AuditQueryParams
     ) -> PageResponse[AuditLogListItem]:
-        """Return a paginated audit log list."""
+        """Возвращает постраничный список событий аудита.
+
+        Args:
+            params: Параметры фильтрации, сортировки и пагинации журнала аудита.
+
+        Returns:
+            Страница событий аудита с метаданными пагинации.
+
+        Raises:
+            ServiceError: Если журнал аудита не удалось получить.
+        """
 
         try:
             logs = await self._load_filtered_logs(params=params, ignore_pagination=True)
@@ -316,7 +483,18 @@ class AuditService:
             ) from exc
 
     async def get_summary(self, params: AuditQueryParams) -> AuditSummaryRead:
-        """Build an audit summary for the same filters as list_logs."""
+        """Формирует сводку аудита по тем же фильтрам, что и `list_logs()`.
+
+        Args:
+            params: Параметры фильтрации журнала аудита.
+
+        Returns:
+            Сводка с общим количеством событий и группировками по действию,
+            типу ресурса и результату.
+
+        Raises:
+            ServiceError: Если сводку аудита не удалось сформировать.
+        """
 
         try:
             logs = await self._load_filtered_logs(params=params, ignore_pagination=True)
@@ -363,7 +541,20 @@ class AuditService:
             ) from exc
 
     async def export_logs(self, request: AuditExportRequest) -> AuditExportPayload:
-        """Export audit events as JSON or CSV content."""
+        """Экспортирует события аудита в JSON или CSV.
+
+        Args:
+            request: Параметры экспорта, включая фильтры, формат, лимит и
+                необходимость включать metadata.
+
+        Returns:
+            Словарь с форматом, именем файла, MIME-типом, количеством строк и
+            строковым содержимым экспорта.
+
+        Raises:
+            ValidationServiceError: Если указан неподдерживаемый формат экспорта.
+            ServiceError: Если журнал аудита не удалось экспортировать.
+        """
 
         try:
             params = self._export_request_to_query_params(request)
@@ -421,7 +612,21 @@ class AuditService:
     async def get_latest_user_logs(
         self, user_id: UUID, *, limit: int = 20
     ) -> list[AuditLogListItem]:
-        """Return the latest events for one user."""
+        """Возвращает последние события аудита для одного пользователя.
+
+        Args:
+            user_id: Идентификатор пользователя.
+            limit: Максимальное количество событий. Значение должно быть от 1
+                до 100 включительно.
+
+        Returns:
+            Список последних событий пользователя.
+
+        Raises:
+            ValidationServiceError: Если `limit` находится вне допустимого
+                диапазона.
+            ServiceError: Если события не удалось получить.
+        """
 
         self._validate_limit(limit, max_limit=100)
         items: list[AuditLogListItem] | None = None
@@ -462,7 +667,22 @@ class AuditService:
         entity_type: str | None = None,
         system_only: bool | None = None,
     ) -> int:
-        """Delete audit events older than created_before and return deleted count."""
+        """Удаляет события аудита, созданные раньше указанной даты.
+
+        Args:
+            created_before: Верхняя граница даты создания. События старше этого
+                значения подлежат удалению.
+            action: Опциональный фильтр по действию.
+            entity_type: Опциональный фильтр по типу сущности.
+            system_only: Если задано, ограничивает удаление системными или
+                пользовательскими событиями согласно значению фильтра.
+
+        Returns:
+            Количество удалённых событий аудита.
+
+        Raises:
+            ServiceError: Если очистку журнала аудита не удалось выполнить.
+        """
 
         deleted_count: int | None = None
         try:
@@ -497,74 +717,24 @@ class AuditService:
                 message="Не удалось очистить журнал аудита.",
             ) from exc
 
-    def _build_audit_log(
-        self,
-        *,
-        user_id: UUID | None,
-        action: AuditAction,
-        result: AuditResult,
-        entity_type: str | None,
-        entity_id: UUID | None,
-        resource_type: AuditResourceType | None,
-        request_id: str | None,
-        correlation_id: str | None,
-        ip_address: str | None,
-        user_agent: str | None,
-        message: str | None,
-        error_code: str | None,
-        metadata: Mapping[str, Any] | None,
-    ) -> AuditLog:
-        normalized_metadata = self._normalize_metadata(metadata)
-
-        common_kwargs = {
-            "action": action,
-            "entity_type": self._normalize_optional_string(entity_type),
-            "entity_id": entity_id,
-            "resource_type": resource_type,
-            "request_id": self._normalize_optional_string(request_id),
-            "correlation_id": self._normalize_optional_string(correlation_id),
-            "message": self._normalize_optional_string(message),
-            "error_code": self._normalize_optional_string(error_code),
-            "metadata": normalized_metadata,
-        }
-
-        if result == AuditResult.FAILURE:
-            return AuditLog.create_failure_event(
-                user_id=user_id,
-                ip_address=self._normalize_optional_string(ip_address),
-                user_agent=self._normalize_optional_string(user_agent),
-                **common_kwargs,
-            )
-
-        if result == AuditResult.DENIED:
-            return AuditLog.create_denied_event(
-                action=action,
-                user_id=user_id,
-                entity_type=common_kwargs["entity_type"],
-                entity_id=entity_id,
-                resource_type=resource_type,
-                ip_address=self._normalize_optional_string(ip_address),
-                user_agent=self._normalize_optional_string(user_agent),
-                request_id=common_kwargs["request_id"],
-                correlation_id=common_kwargs["correlation_id"],
-                message=common_kwargs["message"],
-                metadata=normalized_metadata,
-            )
-
-        if user_id is not None:
-            return AuditLog.create_user_event(
-                user_id=user_id,
-                result=result,
-                ip_address=self._normalize_optional_string(ip_address),
-                user_agent=self._normalize_optional_string(user_agent),
-                **common_kwargs,
-            )
-
-        return AuditLog.create_system_event(result=result, **common_kwargs)
-
     async def _load_filtered_logs(
         self, *, params: AuditQueryParams, ignore_pagination: bool = False
     ) -> list[AuditLog]:
+        """Загружает события аудита и применяет сервисные фильтры.
+
+        Репозиторий поддерживает только часть полей сортировки и фильтрации.
+        Оставшиеся условия применяются на уровне сервиса после загрузки
+        ограниченного набора записей.
+
+        Args:
+            params: Параметры фильтрации, сортировки и пагинации.
+            ignore_pagination: Если `True`, возвращает все отфильтрованные
+                записи без применения `offset` и `limit`.
+
+        Returns:
+            Список ORM-моделей `AuditLog`, соответствующих фильтрам.
+        """
+
         sort_by = self._normalize_sort_by(params.sort_by)
         sort_direction = "desc" if params.sort_desc else "asc"
         repository_sort_by = (
@@ -606,6 +776,16 @@ class AuditService:
         return filtered_logs[params.offset : params.offset + params.limit]
 
     def _matches_params(self, audit_log: AuditLog, params: AuditQueryParams) -> bool:
+        """Проверяет, соответствует ли событие сервисным фильтрам запроса.
+
+        Args:
+            audit_log: Событие аудита для проверки.
+            params: Параметры фильтрации.
+
+        Returns:
+            `True`, если событие соответствует всем сервисным фильтрам.
+        """
+
         if params.result is not None and audit_log.result != params.result:
             return False
         if (
@@ -627,6 +807,20 @@ class AuditService:
         return True
 
     def _matches_query(self, audit_log: AuditLog, query: str) -> bool:
+        """Проверяет, содержит ли событие аудита поисковую строку.
+
+        Поиск выполняется без учёта регистра по основным текстовым и enum-полям
+        события аудита.
+
+        Args:
+            audit_log: Событие аудита для проверки.
+            query: Поисковая строка.
+
+        Returns:
+            `True`, если строка найдена хотя бы в одном проверяемом поле.
+            Пустая строка считается совпадением.
+        """
+
         normalized_query = query.strip().lower()
         if not normalized_query:
             return True
@@ -652,7 +846,28 @@ class AuditService:
     def _sort_logs(
         self, logs: list[AuditLog], *, sort_by: str, sort_desc: bool
     ) -> list[AuditLog]:
+        """Сортирует события аудита на уровне сервиса.
+
+        Args:
+            logs: Список событий аудита.
+            sort_by: Имя поля для сортировки.
+            sort_desc: Если `True`, сортировка выполняется по убыванию.
+
+        Returns:
+            Новый отсортированный список событий аудита.
+        """
+
         def sort_key(audit_log: AuditLog) -> tuple[bool, Any]:
+            """Возвращает ключ сортировки для события аудита.
+
+            Args:
+                audit_log: Событие аудита.
+
+            Returns:
+                Кортеж, где первый элемент показывает, является ли значение
+                `None`, а второй содержит нормализованное значение поля.
+            """
+
             value = getattr(audit_log, sort_by, None)
             if isinstance(value, Enum):
                 value = value.value
@@ -665,6 +880,16 @@ class AuditService:
     def _export_request_to_query_params(
         self, request: AuditExportRequest
     ) -> AuditQueryParams:
+        """Преобразует параметры экспорта в параметры запроса журнала аудита.
+
+        Args:
+            request: Параметры экспорта журнала аудита.
+
+        Returns:
+            Параметры запроса аудита с фильтрами из экспорта и стандартной
+            сортировкой по дате создания.
+        """
+
         return AuditQueryParams(
             user_id=request.user_id,
             action=request.action,
@@ -685,6 +910,16 @@ class AuditService:
     def _audit_log_to_export_row(
         self, audit_log: AuditLog, *, include_metadata: bool
     ) -> dict[str, Any]:
+        """Преобразует событие аудита в строку экспорта.
+
+        Args:
+            audit_log: Событие аудита.
+            include_metadata: Нужно ли включать поле metadata в экспорт.
+
+        Returns:
+            Словарь с JSON-сериализуемыми значениями события аудита.
+        """
+
         row: dict[str, Any] = {
             "id": str(audit_log.id),
             "user_id": str(audit_log.user_id) if audit_log.user_id else None,
@@ -708,6 +943,19 @@ class AuditService:
         return row
 
     def _rows_to_csv(self, rows: list[dict[str, Any]]) -> str:
+        """Преобразует строки экспорта в CSV.
+
+        Сложные значения, такие как словари и списки, сериализуются в JSON
+        перед записью в CSV.
+
+        Args:
+            rows: Список строк экспорта.
+
+        Returns:
+            CSV-содержимое в виде строки. Если строк нет, возвращается пустая
+            строка.
+        """
+
         if not rows:
             return ""
 
@@ -728,12 +976,32 @@ class AuditService:
     def _normalize_metadata(
         self, metadata: Mapping[str, Any] | None
     ) -> dict[str, Any] | None:
+        """Нормализует metadata события аудита.
+
+        Ключи приводятся к строкам, а значения — к JSON-сериализуемому виду.
+
+        Args:
+            metadata: Исходные metadata или `None`.
+
+        Returns:
+            Нормализованный словарь metadata или `None`.
+        """
+
         if metadata is None:
             return None
         return {str(key): self._jsonable(value) for key, value in metadata.items()}
 
     @staticmethod
     def _jsonable(value: Any) -> Any:
+        """Преобразует значение в JSON-сериализуемый формат.
+
+        Args:
+            value: Значение для преобразования.
+
+        Returns:
+            JSON-сериализуемое представление значения.
+        """
+
         if value is None or isinstance(value, str | int | float | bool):
             return value
         if isinstance(value, UUID):
@@ -754,12 +1022,32 @@ class AuditService:
 
     @staticmethod
     def _normalize_optional_string(value: str | None) -> str | None:
+        """Нормализует опциональную строку.
+
+        Args:
+            value: Исходная строка или `None`.
+
+        Returns:
+            Обрезанная строка без пробелов по краям или `None`, если значение
+            отсутствует либо после нормализации стало пустым.
+        """
+
         if value is None:
             return None
         normalized = str(value).strip()
         return normalized or None
 
     def _normalize_sort_by(self, value: str) -> str:
+        """Нормализует поле сортировки журнала аудита.
+
+        Args:
+            value: Запрошенное поле сортировки.
+
+        Returns:
+            Допустимое поле сортировки. Если поле не поддерживается сервисом,
+            возвращается `"created_at"`.
+        """
+
         normalized = value.strip()
         if normalized not in self._SERVICE_SORT_FIELDS:
             return "created_at"
@@ -767,6 +1055,17 @@ class AuditService:
 
     @staticmethod
     def _validate_limit(limit: int, *, max_limit: int) -> None:
+        """Проверяет лимит выборки.
+
+        Args:
+            limit: Проверяемое значение лимита.
+            max_limit: Максимально допустимый лимит.
+
+        Raises:
+            ValidationServiceError: Если `limit` меньше 1 или больше
+                `max_limit`.
+        """
+
         if limit < 1 or limit > max_limit:
             raise ValidationServiceError(
                 "Некорректное значение limit.",
@@ -780,6 +1079,18 @@ class AuditService:
     def _unexpected_error(
         exc: BaseException, *, operation: str, message: str
     ) -> ServiceError:
+        """Логирует непредвиденную ошибку и преобразует её в `ServiceError`.
+
+        Args:
+            exc: Исходное исключение.
+            operation: Название операции сервиса, во время которой произошла
+                ошибка.
+            message: Сообщение для логирования и итоговой сервисной ошибки.
+
+        Returns:
+            Сервисная ошибка, созданная из исходного исключения.
+        """
+
         logger.exception(
             message,
             extra={"operation": operation, "error_type": exc.__class__.__name__},
@@ -790,10 +1101,30 @@ class AuditService:
 
 
 def get_audit_service(*, uow_factory: UnitOfWorkFactory | None = None) -> AuditService:
+    """Создаёт экземпляр сервиса аудита.
+
+    Args:
+        uow_factory: Фабрика UnitOfWork. Если не передана, сервис создаст
+            стандартную фабрику самостоятельно.
+
+    Returns:
+        Экземпляр `AuditService`.
+    """
+
     return AuditService(uow_factory=uow_factory)
 
 
 def _audit_log_snapshot(audit_log: AuditLog) -> dict[str, Any]:
+    """Создаёт снимок ORM-модели события аудита для валидации DTO.
+
+    Args:
+        audit_log: ORM-модель события аудита.
+
+    Returns:
+        Словарь с полями события аудита в формате, подходящем для
+        `AuditLogRead` и `AuditLogListItem`.
+    """
+
     return {
         "id": audit_log.id,
         "user_id": audit_log.user_id,

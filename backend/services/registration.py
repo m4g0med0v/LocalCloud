@@ -1,3 +1,25 @@
+"""
+Сервис модерируемой регистрации пользователей.
+
+Модуль содержит бизнес-логику подачи, просмотра, фильтрации и рассмотрения
+заявок на регистрацию в LocalCloud. Регистрация проходит через модерацию:
+пользователь создает заявку, а уполномоченный пользователь одобряет или
+отклоняет ее. При одобрении атомарно создаются пользователь, роль и стандартная
+квота.
+
+Основные операции модуля:
+    * Создание заявки на регистрацию после проверки пароля и уникальности email.
+    * Получение одной заявки по идентификатору.
+    * Получение списка заявок с фильтрацией, сортировкой и пагинацией.
+    * Одобрение заявки с созданием пользователя, роли и квоты.
+    * Отклонение заявки с сохранением причины.
+    * Отмена ожидающей заявки.
+    * Подсчет ожидающих заявок и статистики по статусам.
+    * Проверка наличия ожидающей заявки по email или username.
+    * Формирование снимков заявок для сериализации и аудита.
+    * Запись событий регистрации в аудит.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -50,7 +72,16 @@ REGISTRATION_SORT_FIELDS = {
 
 
 class RegistrationService:
-    """Business service for the moderated LocalCloud registration flow."""
+    """Сервис бизнес-логики для модерируемой регистрации.
+
+    Управляет жизненным циклом заявок на регистрацию: созданием, просмотром,
+    фильтрацией, одобрением, отклонением и отменой. При одобрении заявки
+    создает пользователя, назначает ему роль и создает стандартную квоту.
+
+    Attributes:
+        uow_factory: Фабрика Unit of Work для работы с базой данных.
+        audit_service: Сервис записи событий аудита.
+    """
 
     def __init__(
         self,
@@ -58,6 +89,18 @@ class RegistrationService:
         uow_factory: UnitOfWorkFactory | None = None,
         audit_service: AuditService | None = None,
     ) -> None:
+        """Инициализирует сервис регистрации.
+
+        Если зависимости не переданы явно, создает их через стандартные фабрики
+        и функции получения сервисов.
+
+        Args:
+            uow_factory: Фабрика Unit of Work. Если None, создается стандартная
+                фабрика.
+            audit_service: Сервис аудита. Если None, создается стандартный сервис
+                аудита.
+        """
+
         self.uow_factory = uow_factory or create_unit_of_work_factory()
         self.audit_service = audit_service or get_audit_service(
             uow_factory=self.uow_factory,
@@ -67,7 +110,24 @@ class RegistrationService:
         self,
         data: RegistrationRequestCreate,
     ) -> RegistrationRequestRead:
-        """Create a pending registration request after validating credentials."""
+        """Создает ожидающую заявку на регистрацию.
+
+        Проверяет надежность пароля, хеширует его, убеждается, что email и username
+        не заняты существующими пользователями, и создает заявку в статусе PENDING.
+        После успешного создания записывает системное событие аудита.
+
+        Args:
+            data: Данные заявки на регистрацию.
+
+        Returns:
+            Данные созданной заявки на регистрацию.
+
+        Raises:
+            ValidationServiceError: Если пароль не прошел проверку надежности.
+            ConflictServiceError: Если email или username уже заняты.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
 
         operation = "submit_request"
         password_hash = self._hash_password(data.password)
@@ -131,6 +191,19 @@ class RegistrationService:
             ) from exc
 
     async def get_request(self, request_id: UUID) -> RegistrationRequestRead:
+        """Возвращает заявку на регистрацию по идентификатору.
+
+        Args:
+            request_id: Идентификатор заявки на регистрацию.
+
+        Returns:
+            Данные найденной заявки.
+
+        Raises:
+            ServiceError: Если заявка не найдена, произошла ошибка базы данных или
+                непредвиденная ошибка сервиса.
+        """
+
         operation = "get_request"
         result: RegistrationRequestRead | None = None
 
@@ -161,6 +234,24 @@ class RegistrationService:
         self,
         params: RegistrationQueryParams,
     ) -> PageResponse[RegistrationRequestListItem]:
+        """Возвращает список заявок на регистрацию.
+
+        Загружает заявки батчами из репозитория, применяет дополнительные фильтры
+        по reviewer и диапазонам дат, сортирует результат и формирует страницу
+        ответа.
+
+        Args:
+            params: Параметры фильтрации, поиска, сортировки и пагинации заявок.
+
+        Returns:
+            Страница заявок на регистрацию и метаданные пагинации.
+
+        Raises:
+            ValidationServiceError: Если параметры пагинации некорректны.
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         operation = "list_requests"
         self._validate_pagination(params.limit, params.offset, operation=operation)
 
@@ -217,7 +308,28 @@ class RegistrationService:
         *,
         reviewed_by: UUID,
     ) -> RegistrationDecisionResponse:
-        """Approve a pending request and atomically create user, role and quota."""
+        """Одобряет ожидающую заявку на регистрацию.
+
+        Проверяет существование пользователя-модератора, загружает заявку,
+        повторно проверяет доступность email и username, затем атомарно создает
+        пользователя, назначает ему стандартную роль, создает стандартную квоту
+        и переводит заявку в одобренное состояние.
+
+        Args:
+            request_id: Идентификатор одобряемой заявки.
+            data: Данные одобрения заявки.
+            reviewed_by: Идентификатор пользователя, который одобряет заявку.
+
+        Returns:
+            Ответ решения с обновленной заявкой, идентификатором созданного
+            пользователя и сообщением.
+
+        Raises:
+            ConflictServiceError: Если email или username уже заняты.
+            ServiceError: Если заявка или reviewer не найдены, заявка не находится
+                в ожидающем статусе, произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
 
         operation = "approve_request"
         snapshot: dict[str, Any] = {}
@@ -320,6 +432,25 @@ class RegistrationService:
         *,
         reviewed_by: UUID,
     ) -> RegistrationDecisionResponse:
+        """Отклоняет ожидающую заявку на регистрацию.
+
+        Проверяет существование пользователя-модератора, загружает заявку и
+        переводит ее в отклоненное состояние с причиной и комментарием.
+
+        Args:
+            request_id: Идентификатор отклоняемой заявки.
+            data: Данные отклонения заявки.
+            reviewed_by: Идентификатор пользователя, который отклоняет заявку.
+
+        Returns:
+            Ответ решения с обновленной заявкой и сообщением.
+
+        Raises:
+            ServiceError: Если заявка или reviewer не найдены, заявка не находится
+                в ожидающем статусе, произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         operation = "reject_request"
         snapshot: dict[str, Any] = {}
 
@@ -375,6 +506,24 @@ class RegistrationService:
         request_id: UUID,
         data: RegistrationCancelRequest,
     ) -> RegistrationDecisionResponse:
+        """Отменяет ожидающую заявку на регистрацию.
+
+        Загружает заявку и переводит ее в отмененное состояние с указанной причиной.
+        Операция записывается как системное событие аудита.
+
+        Args:
+            request_id: Идентификатор отменяемой заявки.
+            data: Данные отмены заявки.
+
+        Returns:
+            Ответ решения с обновленной заявкой и сообщением.
+
+        Raises:
+            ServiceError: Если заявка не найдена, заявка не находится в ожидающем
+                статусе, произошла ошибка базы данных или непредвиденная ошибка
+                сервиса.
+        """
+
         operation = "cancel_request"
         snapshot: dict[str, Any] = {}
 
@@ -423,6 +572,16 @@ class RegistrationService:
             ) from exc
 
     async def count_pending(self) -> int:
+        """Возвращает количество ожидающих заявок на регистрацию.
+
+        Returns:
+            Количество заявок в статусе PENDING.
+
+        Raises:
+            ServiceError: Если репозиторий не вернул результат, произошла ошибка
+                базы данных или непредвиденная ошибка сервиса.
+        """
+
         operation = "count_pending"
         result: int | None = None
 
@@ -447,6 +606,17 @@ class RegistrationService:
             ) from exc
 
     async def get_status_counts(self) -> dict[RegistrationRequestStatus, int]:
+        """Возвращает количество заявок по статусам.
+
+        Returns:
+            Словарь, где ключ — статус заявки, а значение — количество заявок
+            с этим статусом.
+
+        Raises:
+            ServiceError: Если репозиторий не вернул результат, произошла ошибка
+                базы данных или непредвиденная ошибка сервиса.
+        """
+
         operation = "get_status_counts"
         result: dict[RegistrationRequestStatus, int] | None = None
 
@@ -471,6 +641,21 @@ class RegistrationService:
             ) from exc
 
     async def has_pending_request(self, *, email: str, username: str) -> bool:
+        """Проверяет наличие ожидающей заявки по email или username.
+
+        Args:
+            email: Email для поиска ожидающей заявки.
+            username: Username для поиска ожидающей заявки.
+
+        Returns:
+            True, если существует ожидающая заявка с таким email или username,
+            иначе False.
+
+        Raises:
+            ServiceError: Если произошла ошибка базы данных или непредвиденная
+                ошибка сервиса.
+        """
+
         operation = "has_pending_request"
         result: bool | None = None
 
@@ -508,6 +693,19 @@ class RegistrationService:
         operation: str,
         uow: Any,
     ) -> None:
+        """Проверяет, что email и username доступны для регистрации.
+
+        Args:
+            email: Email, который нужно проверить.
+            username: Username, который нужно проверить.
+            operation: Название операции для контекста ошибок.
+            uow: Unit of Work с репозиторием пользователей.
+
+        Raises:
+            ConflictServiceError: Если пользователь с таким email или username уже
+                существует.
+        """
+
         if await uow.users.email_exists(email, include_deleted=False):
             raise ConflictServiceError(
                 "Пользователь с таким email уже существует.",
@@ -533,6 +731,20 @@ class RegistrationService:
         uow: Any,
         params: RegistrationQueryParams,
     ) -> list[dict[str, Any]]:
+        """Загружает снимки заявок на регистрацию батчами.
+
+        Если указан поисковый запрос, выполняет поиск заявок. Иначе загружает список
+        заявок с фильтром по статусу и reviewer. Данные читаются страницами до тех
+        пор, пока очередной батч не станет меньше REPOSITORY_PAGE_LIMIT.
+
+        Args:
+            uow: Unit of Work с репозиторием заявок на регистрацию.
+            params: Параметры поиска и фильтрации заявок.
+
+        Returns:
+            Список снимков заявок на регистрацию.
+        """
+
         statuses = [params.status] if params.status is not None else None
         snapshots: list[dict[str, Any]] = []
         offset = 0
@@ -566,6 +778,19 @@ class RegistrationService:
         snapshots: list[dict[str, Any]],
         params: RegistrationQueryParams,
     ) -> list[dict[str, Any]]:
+        """Фильтрует снимки заявок на регистрацию.
+
+        Применяет дополнительные фильтры, которые не были полностью обработаны
+        репозиторием.
+
+        Args:
+            snapshots: Список снимков заявок.
+            params: Параметры фильтрации заявок.
+
+        Returns:
+            Список снимков, соответствующих фильтрам.
+        """
+
         return [
             snapshot
             for snapshot in snapshots
@@ -579,6 +804,19 @@ class RegistrationService:
         sort_by: str,
         sort_desc: bool,
     ) -> list[dict[str, Any]]:
+        """Сортирует снимки заявок на регистрацию.
+
+        Если поле сортировки не поддерживается, используется created_at.
+
+        Args:
+            snapshots: Список снимков заявок.
+            sort_by: Поле сортировки.
+            sort_desc: Нужно ли сортировать по убыванию.
+
+        Returns:
+            Отсортированный список снимков заявок.
+        """
+
         normalized_sort_by = sort_by.strip().lower()
         if normalized_sort_by not in REGISTRATION_SORT_FIELDS:
             normalized_sort_by = "created_at"
@@ -594,11 +832,35 @@ class RegistrationService:
 
     @staticmethod
     def _hash_password(password: str) -> str:
+        """Проверяет пароль и возвращает его хеш.
+
+        Args:
+            password: Пароль пользователя.
+
+        Returns:
+            Хеш пароля.
+
+        Raises:
+            ValueError: Если пароль не прошел проверку надежности.
+        """
+
         require_strong_password(password)
         return hash_password(password)
 
     @staticmethod
     def _validate_pagination(limit: int, offset: int, *, operation: str) -> None:
+        """Проверяет параметры пагинации списка заявок.
+
+        Args:
+            limit: Размер страницы.
+            offset: Смещение страницы.
+            operation: Название операции для контекста ошибок.
+
+        Raises:
+            ValidationServiceError: Если limit находится вне диапазона от 1 до
+                MAX_PAGE_LIMIT или offset отрицательный.
+        """
+
         if limit < 1 or limit > MAX_PAGE_LIMIT:
             raise ValidationServiceError(
                 "Некорректный размер страницы списка заявок.",
@@ -618,6 +880,19 @@ class RegistrationService:
 
     @staticmethod
     def _require_result(result: Any | None, *, operation: str) -> Any:
+        """Возвращает результат или выбрасывает ошибку при его отсутствии.
+
+        Args:
+            result: Результат операции.
+            operation: Название операции для контекста ошибки.
+
+        Returns:
+            Переданный результат, если он не None.
+
+        Raises:
+            ServiceError: Если result равен None.
+        """
+
         if result is None:
             raise ServiceError(
                 "Сервис регистрации не вернул результат операции.",
@@ -630,6 +905,17 @@ class RegistrationService:
     def _database_error(
         exc: DatabaseError, *, operation: str, message: str
     ) -> ServiceError:
+        """Преобразует ошибку базы данных в ошибку сервиса регистрации.
+
+        Args:
+            exc: Исходная ошибка базы данных.
+            operation: Название операции, во время которой возникла ошибка.
+            message: Сообщение для создаваемой ошибки сервиса.
+
+        Returns:
+            Ошибка сервисного уровня с контекстом сервиса регистрации.
+        """
+
         return service_error_from_database(
             exc,
             operation=operation,
@@ -641,6 +927,19 @@ class RegistrationService:
     def _unexpected_error(
         exc: Exception, *, operation: str, message: str
     ) -> ServiceError:
+        """Преобразует непредвиденное исключение в ошибку сервиса.
+
+        Дополнительно пишет исключение в лог с названием операции и типом ошибки.
+
+        Args:
+            exc: Исходное исключение.
+            operation: Название операции, во время которой возникла ошибка.
+            message: Сообщение для лога и создаваемой ошибки сервиса.
+
+        Returns:
+            Ошибка сервисного уровня с контекстом исходного исключения.
+        """
+
         logger.exception(
             message,
             extra={"operation": operation, "error_type": exc.__class__.__name__},
@@ -661,6 +960,21 @@ class RegistrationService:
         message: str,
         metadata: Mapping[str, Any] | None = None,
     ) -> None:
+        """Безопасно записывает событие регистрации в аудит.
+
+        Если actor_id равен None, записывает системное событие. Иначе записывает
+        пользовательское событие от имени actor_id. Ошибки аудита не пробрасываются
+        выше.
+
+        Args:
+            actor_id: Идентификатор пользователя, выполнившего операцию. Если None,
+                событие считается системным.
+            action: Действие аудита.
+            entity_id: Идентификатор заявки на регистрацию.
+            message: Сообщение события аудита.
+            metadata: Дополнительные метаданные события.
+        """
+
         try:
             if actor_id is None:
                 await self.audit_service.log_system_event(
@@ -696,6 +1010,17 @@ class RegistrationService:
 
 
 def _registration_snapshot(request: RegistrationRequest) -> dict[str, Any]:
+    """Создает снимок заявки на регистрацию.
+
+    Args:
+        request: ORM-модель заявки на регистрацию.
+
+    Returns:
+        Словарь с идентификатором, email, username, статусом, комментарием,
+        причиной отклонения, данными review, созданным пользователем и временем
+        создания.
+    """
+
     return {
         "id": request.id,
         "email": request.email,
@@ -711,12 +1036,30 @@ def _registration_snapshot(request: RegistrationRequest) -> dict[str, Any]:
 
 
 def _registration_read(snapshot: Mapping[str, Any]) -> RegistrationRequestRead:
+    """Преобразует снимок заявки в схему чтения.
+
+    Args:
+        snapshot: Снимок заявки на регистрацию.
+
+    Returns:
+        Схема чтения заявки на регистрацию.
+    """
+
     return RegistrationRequestRead.model_validate(dict(snapshot))
 
 
 def _registration_list_item(
     snapshot: Mapping[str, Any],
 ) -> RegistrationRequestListItem:
+    """Преобразует снимок заявки в элемент списка.
+
+    Args:
+        snapshot: Снимок заявки на регистрацию.
+
+    Returns:
+        Элемент списка заявок на регистрацию.
+    """
+
     return RegistrationRequestListItem.model_validate(dict(snapshot))
 
 
@@ -724,6 +1067,16 @@ def _decision_response(
     snapshot: Mapping[str, Any],
     message: str,
 ) -> RegistrationDecisionResponse:
+    """Формирует ответ решения по заявке.
+
+    Args:
+        snapshot: Снимок заявки на регистрацию.
+        message: Сообщение о результате решения.
+
+    Returns:
+        Ответ с заявкой, идентификатором созданного пользователя и сообщением.
+    """
+
     return RegistrationDecisionResponse(
         request=_registration_read(snapshot),
         created_user_id=snapshot.get("created_user_id"),
@@ -732,6 +1085,15 @@ def _decision_response(
 
 
 def _audit_registration_request(snapshot: Mapping[str, Any]) -> dict[str, Any]:
+    """Формирует метаданные заявки для аудита.
+
+    Args:
+        snapshot: Снимок заявки на регистрацию.
+
+    Returns:
+        Словарь с основными данными заявки для аудита.
+    """
+
     return {
         "id": str(snapshot["id"]),
         "email": snapshot["email"],
@@ -746,6 +1108,18 @@ def _matches_registration_filters(
     snapshot: Mapping[str, Any],
     params: RegistrationQueryParams,
 ) -> bool:
+    """Проверяет соответствие заявки фильтрам.
+
+    Проверяет reviewer, диапазон даты создания и диапазон даты рассмотрения.
+
+    Args:
+        snapshot: Снимок заявки на регистрацию.
+        params: Параметры фильтрации заявок.
+
+    Returns:
+        True, если заявка соответствует фильтрам.
+    """
+
     if (
         params.reviewed_by is not None
         and snapshot.get("reviewed_by") != params.reviewed_by
@@ -777,6 +1151,21 @@ def _matches_datetime_range(
     from_value: datetime | None,
     to_value: datetime | None,
 ) -> bool:
+    """Проверяет попадание даты в диапазон.
+
+    Если обе границы отсутствуют, возвращает True. Если значение не является
+    datetime при наличии хотя бы одной границы, возвращает False. Все даты
+    нормализуются к UTC перед сравнением.
+
+    Args:
+        value: Проверяемое значение.
+        from_value: Начало диапазона. Если None, нижняя граница не применяется.
+        to_value: Конец диапазона. Если None, верхняя граница не применяется.
+
+    Returns:
+        True, если значение попадает в диапазон.
+    """
+
     if from_value is None and to_value is None:
         return True
     if not isinstance(value, datetime):
@@ -791,18 +1180,48 @@ def _matches_datetime_range(
 
 
 def _normalize_datetime(value: datetime) -> datetime:
+    """Нормализует дату и время к UTC.
+
+    Если значение не содержит timezone, считает его временем UTC. Если timezone
+    указан, переводит значение в UTC.
+
+    Args:
+        value: Дата и время для нормализации.
+
+    Returns:
+        Дата и время с timezone UTC.
+    """
+
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)
 
 
 def _optional_uuid(value: Any) -> str | None:
+    """Преобразует UUID-подобное значение в строку или None.
+
+    Args:
+        value: Значение для преобразования.
+
+    Returns:
+        None, если value равен None, иначе строковое представление value.
+    """
+
     if value is None:
         return None
     return str(value)
 
 
 def _enum_or_value(value: Any) -> Any:
+    """Возвращает значение Enum или исходный объект.
+
+    Args:
+        value: Проверяемое значение.
+
+    Returns:
+        value.value, если объект имеет атрибут value, иначе исходное значение.
+    """
+
     return getattr(value, "value", value)
 
 
@@ -811,6 +1230,16 @@ def get_registration_service(
     uow_factory: UnitOfWorkFactory | None = None,
     audit_service: AuditService | None = None,
 ) -> RegistrationService:
+    """Создает экземпляр сервиса регистрации.
+
+    Args:
+        uow_factory: Фабрика Unit of Work для нового экземпляра сервиса.
+        audit_service: Сервис аудита для нового экземпляра сервиса.
+
+    Returns:
+        Экземпляр RegistrationService.
+    """
+
     return RegistrationService(
         uow_factory=uow_factory,
         audit_service=audit_service,
