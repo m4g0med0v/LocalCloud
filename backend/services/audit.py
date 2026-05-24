@@ -537,13 +537,18 @@ class AuditService:
             )
 
         if result == AuditResult.DENIED:
-            denied_kwargs = dict(common_kwargs)
-            denied_kwargs.pop("error_code", None)
             return AuditLog.create_denied_event(
+                action=action,
                 user_id=user_id,
+                entity_type=common_kwargs["entity_type"],
+                entity_id=entity_id,
+                resource_type=resource_type,
                 ip_address=self._normalize_optional_string(ip_address),
                 user_agent=self._normalize_optional_string(user_agent),
-                **denied_kwargs,
+                request_id=common_kwargs["request_id"],
+                correlation_id=common_kwargs["correlation_id"],
+                message=common_kwargs["message"],
+                metadata=normalized_metadata,
             )
 
         if user_id is not None:
@@ -799,7 +804,7 @@ def _audit_log_snapshot(audit_log: AuditLog) -> dict[str, Any]:
         "resource_type": audit_log.resource_type,
         "request_id": audit_log.request_id,
         "correlation_id": audit_log.correlation_id,
-        "ip_address": audit_log.ip_address,
+        "ip_address": str(audit_log.ip_address) if audit_log.ip_address else None,
         "user_agent": audit_log.user_agent,
         "message": audit_log.message,
         "error_code": audit_log.error_code,
