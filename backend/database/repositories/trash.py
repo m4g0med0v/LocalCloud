@@ -1165,7 +1165,39 @@ class TrashItemRepository(BaseRepository[TrashItem]):
         offset: int = 0,
         limit: int = 100,
     ) -> list[TrashItem]:
-        """Search owner trash items with extended service filters."""
+        """Ищет элементы корзины владельца по расширенным фильтрам.
+
+        Возвращает страницу элементов корзины указанного владельца. Поддерживает
+        фильтрацию по статусу, доступности восстановления, диапазону даты удаления,
+        сроку хранения и поисковой строке. Поиск выполняется по исходному пути
+        элемента корзины и имени связанного узла файловой системы.
+
+        Args:
+            owner_id: Идентификатор владельца элементов корзины.
+            include_purged: Нужно ли включать окончательно удаленные элементы.
+                Если False, элементы с заполненным purged_at исключаются.
+            status: Статус элемента корзины для фильтрации. Если None, фильтр по
+                статусу не применяется.
+            restore_available: Признак доступности восстановления. Если None,
+                фильтр по доступности восстановления не применяется.
+            deleted_from: Нижняя граница даты удаления включительно.
+            deleted_to: Верхняя граница даты удаления включительно.
+            expires_before: Верхняя граница срока хранения включительно. При
+                указании фильтра учитываются только элементы с непустым expires_at.
+            query: Поисковая строка. Если None или пустая строка, текстовый поиск
+                не применяется.
+            sort_by: Поле сортировки элементов корзины.
+            sort_direction: Направление сортировки: asc или desc.
+            offset: Смещение для постраничной выдачи.
+            limit: Максимальное количество элементов корзины в результате.
+
+        Returns:
+            Список элементов корзины владельца, соответствующих фильтрам.
+
+        Raises:
+            ValidationServiceError: Если параметры пагинации некорректны.
+            DatabaseError: Если не удалось выполнить запрос к базе данных.
+        """
 
         self._validate_pagination(offset=offset, limit=limit)
         conditions: list[Any] = [TrashItem.owner_id == owner_id]
@@ -1219,7 +1251,34 @@ class TrashItemRepository(BaseRepository[TrashItem]):
         expires_before: datetime | None = None,
         query: str | None = None,
     ) -> int:
-        """Count owner trash items with extended service filters."""
+        """Считает элементы корзины владельца по расширенным фильтрам.
+
+        Возвращает количество элементов корзины указанного владельца с теми же
+        фильтрами, которые используются при поиске элементов корзины. При наличии
+        query выполняет join со связанным узлом файловой системы и ищет совпадение
+        по исходному пути элемента корзины или имени узла.
+
+        Args:
+            owner_id: Идентификатор владельца элементов корзины.
+            include_purged: Нужно ли учитывать окончательно удаленные элементы.
+                Если False, элементы с заполненным purged_at исключаются.
+            status: Статус элемента корзины для фильтрации. Если None, фильтр по
+                статусу не применяется.
+            restore_available: Признак доступности восстановления. Если None,
+                фильтр по доступности восстановления не применяется.
+            deleted_from: Нижняя граница даты удаления включительно.
+            deleted_to: Верхняя граница даты удаления включительно.
+            expires_before: Верхняя граница срока хранения включительно. При
+                указании фильтра учитываются только элементы с непустым expires_at.
+            query: Поисковая строка. Если None или пустая строка, текстовый поиск
+                не применяется.
+
+        Returns:
+            Количество элементов корзины владельца, соответствующих фильтрам.
+
+        Raises:
+            DatabaseError: Если не удалось выполнить запрос к базе данных.
+        """
 
         conditions: list[Any] = [TrashItem.owner_id == owner_id]
         if not include_purged:
@@ -1238,13 +1297,12 @@ class TrashItemRepository(BaseRepository[TrashItem]):
         statement = select(func.count()).select_from(TrashItem).where(and_(*conditions))
         if query:
             like_query = f"%{query.strip().lower()}%"
-            statement = (
-                statement.join(self.nodes.model, TrashItem.node_id == self.nodes.model.id)
-                .where(
-                    or_(
-                        func.lower(TrashItem.original_path).like(like_query),
-                        func.lower(self.nodes.model.name).like(like_query),
-                    )
+            statement = statement.join(
+                self.nodes.model, TrashItem.node_id == self.nodes.model.id
+            ).where(
+                or_(
+                    func.lower(TrashItem.original_path).like(like_query),
+                    func.lower(self.nodes.model.name).like(like_query),
                 )
             )
 

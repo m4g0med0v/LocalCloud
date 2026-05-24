@@ -1870,26 +1870,72 @@ class FileRepository(BaseRepository[File]):
         offset: int = 0,
         limit: int = 100,
     ) -> list[File]:
+        """Ищет файлы пользователя по фильтрам.
+
+        Возвращает страницу файлов указанного владельца. Поддерживает фильтрацию
+        по родительскому узлу, признаку удаления связанного узла, поисковой строке,
+        MIME-типу, расширению, статусам хранилища, обработки и превью, размеру файла,
+        диапазонам дат создания и обновления.
+
+        Args:
+            owner_id: Идентификатор владельца файлов.
+            parent_id: Идентификатор родительского узла. Если None, фильтр по
+                родителю не применяется.
+            include_deleted_nodes: Нужно ли включать файлы, связанные с удаленными
+                узлами файловой системы.
+            query: Поисковая строка. Если None или пустая строка, текстовый поиск
+                не применяется.
+            mime_type: MIME-тип файла для фильтрации. Если None, фильтр по MIME-типу
+                не применяется.
+            extension: Расширение файла для фильтрации. Если None, фильтр по
+                расширению не применяется.
+            storage_status: Статус объекта в хранилище для фильтрации.
+            processing_status: Статус обработки файла для фильтрации.
+            preview_status: Статус превью файла для фильтрации.
+            min_size_bytes: Минимальный размер файла в байтах включительно.
+            max_size_bytes: Максимальный размер файла в байтах включительно.
+            created_from: Нижняя граница даты создания файла включительно.
+            created_to: Верхняя граница даты создания файла включительно.
+            updated_from: Нижняя граница даты обновления файла включительно.
+            updated_to: Верхняя граница даты обновления файла включительно.
+            sort_by: Поле сортировки. Если поле не поддерживается реализацией
+                _build_search_statement, используется ее поведение по умолчанию.
+            sort_direction: Направление сортировки: asc или desc.
+            offset: Смещение для постраничной выдачи.
+            limit: Максимальное количество файлов в результате.
+
+        Returns:
+            Список файлов пользователя, соответствующих фильтрам.
+
+        Raises:
+            ValidationServiceError: Если параметры пагинации некорректны.
+            DatabaseError: Если не удалось выполнить запрос к базе данных.
+        """
+
         self._validate_pagination(offset=offset, limit=limit)
-        statement = self._build_search_statement(
-            owner_id=owner_id,
-            parent_id=parent_id,
-            include_deleted_nodes=include_deleted_nodes,
-            query=query,
-            mime_type=mime_type,
-            extension=extension,
-            storage_status=storage_status,
-            processing_status=processing_status,
-            preview_status=preview_status,
-            min_size_bytes=min_size_bytes,
-            max_size_bytes=max_size_bytes,
-            created_from=created_from,
-            created_to=created_to,
-            updated_from=updated_from,
-            updated_to=updated_to,
-            sort_by=sort_by,
-            sort_direction=sort_direction,
-        ).offset(offset).limit(limit)
+        statement = (
+            self._build_search_statement(
+                owner_id=owner_id,
+                parent_id=parent_id,
+                include_deleted_nodes=include_deleted_nodes,
+                query=query,
+                mime_type=mime_type,
+                extension=extension,
+                storage_status=storage_status,
+                processing_status=processing_status,
+                preview_status=preview_status,
+                min_size_bytes=min_size_bytes,
+                max_size_bytes=max_size_bytes,
+                created_from=created_from,
+                created_to=created_to,
+                updated_from=updated_from,
+                updated_to=updated_to,
+                sort_by=sort_by,
+                sort_direction=sort_direction,
+            )
+            .offset(offset)
+            .limit(limit)
+        )
         return await self.scalars_all(statement, operation="search_user_files")
 
     async def count_user_files_filtered(
@@ -1911,6 +1957,41 @@ class FileRepository(BaseRepository[File]):
         updated_from: Any | None = None,
         updated_to: Any | None = None,
     ) -> int:
+        """Считает файлы пользователя по фильтрам.
+
+        Возвращает количество файлов указанного владельца с теми же фильтрами,
+        которые используются при поиске файлов. Для подсчета строит поисковый
+        запрос и считает количество строк из его подзапроса.
+
+        Args:
+            owner_id: Идентификатор владельца файлов.
+            parent_id: Идентификатор родительского узла. Если None, фильтр по
+                родителю не применяется.
+            include_deleted_nodes: Нужно ли учитывать файлы, связанные с удаленными
+                узлами файловой системы.
+            query: Поисковая строка. Если None или пустая строка, текстовый поиск
+                не применяется.
+            mime_type: MIME-тип файла для фильтрации. Если None, фильтр по MIME-типу
+                не применяется.
+            extension: Расширение файла для фильтрации. Если None, фильтр по
+                расширению не применяется.
+            storage_status: Статус объекта в хранилище для фильтрации.
+            processing_status: Статус обработки файла для фильтрации.
+            preview_status: Статус превью файла для фильтрации.
+            min_size_bytes: Минимальный размер файла в байтах включительно.
+            max_size_bytes: Максимальный размер файла в байтах включительно.
+            created_from: Нижняя граница даты создания файла включительно.
+            created_to: Верхняя граница даты создания файла включительно.
+            updated_from: Нижняя граница даты обновления файла включительно.
+            updated_to: Верхняя граница даты обновления файла включительно.
+
+        Returns:
+            Количество файлов пользователя, соответствующих фильтрам.
+
+        Raises:
+            DatabaseError: Если не удалось выполнить запрос к базе данных.
+        """
+
         statement = self._build_search_statement(
             owner_id=owner_id,
             parent_id=parent_id,
@@ -2356,6 +2437,44 @@ class FileRepository(BaseRepository[File]):
         sort_by: str,
         sort_direction: str,
     ) -> Select[tuple[File]]:
+        """Строит SQL-запрос для поиска файлов пользователя.
+
+        Формирует базовый SELECT по File с join к FileSystemNode и применяет фильтры
+        по владельцу, родительскому узлу, признаку удаления узла, поисковой строке,
+        MIME-типу, расширению, статусам файла, размеру, датам создания и обновления.
+        Также добавляет eager loading для связанного узла и текущей версии файла.
+
+        Args:
+            owner_id: Идентификатор владельца файлов.
+            parent_id: Идентификатор родительского узла. Если None, фильтр по
+                родителю не применяется.
+            include_deleted_nodes: Нужно ли включать файлы, связанные с удаленными
+                узлами файловой системы.
+            query: Поисковая строка. При наличии применяется к имени узла, пути,
+                MIME-типу, расширению и checksum файла.
+            mime_type: MIME-тип файла для точной фильтрации.
+            extension: Расширение файла для точной фильтрации.
+            storage_status: Статус объекта файла в хранилище.
+            processing_status: Статус обработки файла.
+            preview_status: Статус генерации или доступности превью.
+            min_size_bytes: Минимальный размер файла в байтах включительно.
+            max_size_bytes: Максимальный размер файла в байтах включительно.
+            created_from: Нижняя граница даты создания файла включительно.
+            created_to: Верхняя граница даты создания файла включительно.
+            updated_from: Нижняя граница даты обновления файла включительно.
+            updated_to: Верхняя граница даты обновления файла включительно.
+            sort_by: Поле сортировки. Поддерживаются name, path, size_bytes,
+                mime_type, extension, created_at и updated_at. Если поле неизвестно,
+                используется created_at.
+            sort_direction: Направление сортировки. Значение desc включает
+                сортировку по убыванию, остальные значения дают сортировку по
+                возрастанию.
+
+        Returns:
+            SQLAlchemy Select-запрос, возвращающий File и готовый к добавлению
+            offset, limit или использованию в подзапросе.
+        """
+
         statement = (
             select(File)
             .join(FileSystemNode, File.node_id == FileSystemNode.id)

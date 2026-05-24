@@ -1489,7 +1489,40 @@ class UploadSessionsRepository(BaseRepository[UploadSession]):
         offset: int = 0,
         limit: int = 100,
     ) -> list[UploadSession]:
-        """Search user upload sessions with service-level query filters."""
+        """Ищет upload-сессии пользователя по фильтрам.
+
+        Возвращает страницу upload-сессий указанного пользователя. Поддерживает
+        фильтрацию по родительскому узлу, статусу, имени файла, диапазону даты
+        создания и сроку истечения сессии. Если status не указан и
+        include_terminal=False, терминальные upload-сессии исключаются из результата.
+
+        Args:
+            user_id: Идентификатор пользователя, чьи upload-сессии нужно найти.
+            parent_node_id: Идентификатор родительского узла для фильтрации.
+                Если None, фильтр по родителю не применяется.
+            status: Статус upload-сессии для фильтрации. Если None, фильтр по
+                конкретному статусу не применяется.
+            include_terminal: Нужно ли включать терминальные upload-сессии, если
+                status не указан.
+            filename_query: Подстрока для поиска по имени файла без учета регистра.
+                Если None или пустая строка, фильтр по имени файла не применяется.
+            created_from: Нижняя граница даты создания upload-сессии включительно.
+            created_to: Верхняя граница даты создания upload-сессии включительно.
+            expires_before: Верхняя граница срока истечения upload-сессии
+                включительно.
+            sort_by: Поле сортировки. Поддерживаются created_at, expires_at,
+                file_name и status. Если поле неизвестно, используется created_at.
+            sort_desc: Нужно ли сортировать по убыванию.
+            offset: Смещение для постраничной выдачи.
+            limit: Максимальное количество upload-сессий в результате.
+
+        Returns:
+            Список upload-сессий пользователя, соответствующих фильтрам.
+
+        Raises:
+            ValidationServiceError: Если параметры пагинации некорректны.
+            DatabaseError: Если не удалось выполнить запрос к базе данных.
+        """
 
         self._validate_pagination(offset=offset, limit=limit)
         statement = select(UploadSession).where(UploadSession.user_id == user_id)
@@ -1499,10 +1532,14 @@ class UploadSessionsRepository(BaseRepository[UploadSession]):
         if status is not None:
             statement = statement.where(UploadSession.status == status)
         elif not include_terminal:
-            statement = statement.where(UploadSession.status.notin_(self._terminal_statuses()))
+            statement = statement.where(
+                UploadSession.status.notin_(self._terminal_statuses())
+            )
         if filename_query:
             statement = statement.where(
-                func.lower(UploadSession.file_name).contains(filename_query.strip().lower())
+                func.lower(UploadSession.file_name).contains(
+                    filename_query.strip().lower()
+                )
             )
         if created_from is not None:
             statement = statement.where(UploadSession.created_at >= created_from)
@@ -1534,20 +1571,52 @@ class UploadSessionsRepository(BaseRepository[UploadSession]):
         created_to: datetime | None = None,
         expires_before: datetime | None = None,
     ) -> int:
-        """Count user upload sessions with service-level query filters."""
+        """Считает upload-сессии пользователя по фильтрам.
 
-        statement = select(func.count()).select_from(UploadSession).where(
-            UploadSession.user_id == user_id
+        Возвращает количество upload-сессий указанного пользователя с теми же
+        фильтрами, которые используются при поиске сессий. Если status не указан
+        и include_terminal=False, терминальные upload-сессии не учитываются.
+
+        Args:
+            user_id: Идентификатор пользователя, чьи upload-сессии нужно посчитать.
+            parent_node_id: Идентификатор родительского узла для фильтрации.
+                Если None, фильтр по родителю не применяется.
+            status: Статус upload-сессии для фильтрации. Если None, фильтр по
+                конкретному статусу не применяется.
+            include_terminal: Нужно ли учитывать терминальные upload-сессии, если
+                status не указан.
+            filename_query: Подстрока для поиска по имени файла без учета регистра.
+                Если None или пустая строка, фильтр по имени файла не применяется.
+            created_from: Нижняя граница даты создания upload-сессии включительно.
+            created_to: Верхняя граница даты создания upload-сессии включительно.
+            expires_before: Верхняя граница срока истечения upload-сессии
+                включительно.
+
+        Returns:
+            Количество upload-сессий пользователя, соответствующих фильтрам.
+
+        Raises:
+            DatabaseError: Если не удалось выполнить запрос к базе данных.
+        """
+
+        statement = (
+            select(func.count())
+            .select_from(UploadSession)
+            .where(UploadSession.user_id == user_id)
         )
         if parent_node_id is not None:
             statement = statement.where(UploadSession.parent_node_id == parent_node_id)
         if status is not None:
             statement = statement.where(UploadSession.status == status)
         elif not include_terminal:
-            statement = statement.where(UploadSession.status.notin_(self._terminal_statuses()))
+            statement = statement.where(
+                UploadSession.status.notin_(self._terminal_statuses())
+            )
         if filename_query:
             statement = statement.where(
-                func.lower(UploadSession.file_name).contains(filename_query.strip().lower())
+                func.lower(UploadSession.file_name).contains(
+                    filename_query.strip().lower()
+                )
             )
         if created_from is not None:
             statement = statement.where(UploadSession.created_at >= created_from)
