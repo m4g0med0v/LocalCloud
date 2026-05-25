@@ -161,7 +161,7 @@ class TasksService:
                     refresh=False,
                 )
                 created.priority = data.priority
-                created.payload = data.payload
+                created.payload = cast(dict[str, Any] | None, _jsonable(data.payload))
                 created.error_code = None
                 created.attempts_count = 0
                 created.max_attempts = data.max_attempts
@@ -195,6 +195,23 @@ class TasksService:
             raise service_error_from_exception(
                 exc, service=SERVICE_NAME, operation=operation
             ) from exc
+
+    async def create_system_task(
+        self,
+        data: BackgroundTaskCreate,
+    ) -> BackgroundTaskRead:
+        """Создаёт системную фоновую задачу.
+
+        Это тонкая обёртка над `create_task`, фиксирующая отсутствие `actor_id`.
+
+        Args:
+            data: Данные для создания фоновой задачи.
+
+        Returns:
+            Данные созданной фоновой задачи.
+        """
+
+        return await self.create_task(data, actor_id=None)
 
     async def schedule_folder_archive_task(
         self,
@@ -363,11 +380,14 @@ class TasksService:
         """
 
         operation = "get_task"
+        snapshot: dict[str, Any] | None = None
         try:
             async with self.uow_factory() as uow:
                 task = await uow.tasks.get_required_by_id(task_id)
                 await self._require_task_access(uow=uow, task=task, actor_id=actor_id)
                 snapshot = _task_snapshot(task)
+            if snapshot is None:
+                raise _empty_result_error(operation)
             return BackgroundTaskRead.model_validate(snapshot)
         except ServiceError:
             raise
@@ -412,6 +432,8 @@ class TasksService:
         offset = max(0, params.offset)
         sort_by = _normalize_sort_by(params.sort_by)
         sort_direction: Literal["asc", "desc"] = "desc" if params.sort_desc else "asc"
+        tasks: list[Any] = []
+        total = 0
 
         try:
             async with self.uow_factory() as uow:
@@ -654,9 +676,18 @@ class TasksService:
 
         operation = "update_progress"
         snapshot: dict[str, Any] | None = None
+        started_snapshot: dict[str, Any] | None = None
         try:
             async with self.uow_factory() as uow:
                 task = await uow.tasks.get_required_by_id(task_id)
+                should_mark_started = task.status == BackgroundTaskStatus.PENDING
+                if should_mark_started:
+                    started = await uow.tasks.mark_running(
+                        task,
+                        flush=False,
+                        refresh=False,
+                    )
+                    started_snapshot = _task_snapshot(started)
                 updated = await uow.tasks.update_progress(
                     task,
                     progress_percent=data.progress_percent,
@@ -666,13 +697,22 @@ class TasksService:
                 if data.message is not None:
                     updated.error_message = data.message
                 if data.result_data is not None:
-                    updated.result_data = data.result_data
+                    updated.result_data = cast(
+                        dict[str, Any] | None, _jsonable(data.result_data)
+                    )
                 await uow.flush()
                 await uow.refresh(updated)
                 snapshot = _task_snapshot(updated)
                 await uow.commit()
             if snapshot is None:
                 raise _empty_result_error(operation)
+            if started_snapshot is not None:
+                await self._safe_log_event(
+                    action=AuditAction.BACKGROUND_TASK_STARTED,
+                    actor_id=_snapshot_uuid(started_snapshot, "created_by"),
+                    task_snapshot=started_snapshot,
+                    message="Background task was started.",
+                )
             return BackgroundTaskRead.model_validate(snapshot)
         except ServiceError:
             raise
@@ -715,7 +755,10 @@ class TasksService:
                 task = await uow.tasks.get_required_by_id(task_id)
                 updated = await uow.tasks.mark_completed(
                     task,
-                    result_data=dict(result_data) if result_data else None,
+                    result_data=cast(
+                        dict[str, Any] | None,
+                        _jsonable(dict(result_data) if result_data else None),
+                    ),
                     flush=True,
                     refresh=True,
                 )
@@ -776,7 +819,10 @@ class TasksService:
                 updated = await uow.tasks.mark_failed(
                     task,
                     error_message=error_message,
-                    result_data=dict(result_data) if result_data else None,
+                    result_data=cast(
+                        dict[str, Any] | None,
+                        _jsonable(dict(result_data) if result_data else None),
+                    ),
                     flush=True,
                     refresh=True,
                 )
@@ -792,6 +838,56 @@ class TasksService:
                 task_snapshot=snapshot,
                 message="Background task failed.",
             )
+            return _task_result(snapshot)
+        except ServiceError:
+            raise
+        except DatabaseError as exc:
+            raise service_error_from_database(
+                exc, service=SERVICE_NAME, operation=operation
+            ) from exc
+        except Exception as exc:
+            raise service_error_from_exception(
+                exc, service=SERVICE_NAME, operation=operation
+            ) from exc
+
+    async def release_task_for_retry(
+        self,
+        *,
+        task_id: UUID,
+        retry_delay_seconds: int,
+        error_message: str | None = None,
+        error_code: str | None = None,
+        result_data: Mapping[str, Any] | None = None,
+        progress_percent: int = 0,
+    ) -> TaskResultRead:
+        """Переводит задачу обратно в очередь PENDING для повторной попытки.
+
+        Используется worker-процессом после неуспешного выполнения, когда
+        задача должна быть повторена позже.
+        """
+
+        operation = "release_task_for_retry"
+        snapshot: dict[str, Any] | None = None
+        try:
+            async with self.uow_factory() as uow:
+                task = await uow.tasks.get_required_by_id(task_id)
+                released = await uow.tasks.release_for_retry(
+                    task,
+                    retry_delay_seconds=retry_delay_seconds,
+                    error_message=error_message,
+                    error_code=error_code,
+                    result_data=cast(
+                        dict[str, Any] | None,
+                        _jsonable(dict(result_data) if result_data else None),
+                    ),
+                    progress_percent=progress_percent,
+                    flush=True,
+                    refresh=True,
+                )
+                snapshot = _task_snapshot(released)
+                await uow.commit()
+            if snapshot is None:
+                raise _empty_result_error(operation)
             return _task_result(snapshot)
         except ServiceError:
             raise
@@ -864,6 +960,7 @@ class TasksService:
         """
 
         operation = "mark_stale_running_tasks_failed"
+        count: int | None = None
         try:
             async with self.uow_factory() as uow:
                 count = await uow.tasks.mark_stale_running_tasks_failed(
@@ -873,7 +970,9 @@ class TasksService:
                     flush=True,
                 )
                 await uow.commit()
-                return count
+            if count is None:
+                raise _empty_result_error(operation)
+            return count
         except DatabaseError as exc:
             raise service_error_from_database(
                 exc, service=SERVICE_NAME, operation=operation
@@ -909,6 +1008,7 @@ class TasksService:
         """
 
         operation = "delete_finished_tasks"
+        count: int | None = None
         try:
             async with self.uow_factory() as uow:
                 count = await uow.tasks.delete_finished_tasks(
@@ -919,7 +1019,9 @@ class TasksService:
                     flush=True,
                 )
                 await uow.commit()
-                return count
+            if count is None:
+                raise _empty_result_error(operation)
+            return count
         except DatabaseError as exc:
             raise service_error_from_database(
                 exc, service=SERVICE_NAME, operation=operation
@@ -949,20 +1051,24 @@ class TasksService:
         """
 
         operation = "get_status_counts"
+        resolved_counts: dict[BackgroundTaskStatus, int] | None = None
         try:
             async with self.uow_factory() as uow:
                 if await self._is_admin(uow, actor_id):
-                    return await uow.tasks.get_status_counts()
-
-                counts: dict[BackgroundTaskStatus, int] = {
-                    status: 0 for status in BackgroundTaskStatus
-                }
-                for status in BackgroundTaskStatus:
-                    counts[status] = await uow.tasks.count_tasks(
-                        created_by=actor_id,
-                        status=status,
-                    )
-                return counts
+                    resolved_counts = await uow.tasks.get_status_counts()
+                else:
+                    counts: dict[BackgroundTaskStatus, int] = {
+                        status: 0 for status in BackgroundTaskStatus
+                    }
+                    for status in BackgroundTaskStatus:
+                        counts[status] = await uow.tasks.count_tasks(
+                            created_by=actor_id,
+                            status=status,
+                        )
+                    resolved_counts = counts
+            if resolved_counts is None:
+                raise _empty_result_error(operation)
+            return resolved_counts
         except DatabaseError as exc:
             raise service_error_from_database(
                 exc, service=SERVICE_NAME, operation=operation

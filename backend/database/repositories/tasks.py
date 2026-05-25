@@ -2,15 +2,19 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
-from sqlalchemy import String, cast, delete, func, or_, select, update
+from sqlalchemy import String, case, cast, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.exceptions import EntityNotFoundError, InvalidQueryError
-from database.models.enums import BackgroundTaskStatus, BackgroundTaskType
+from database.models.enums import (
+    BackgroundTaskStatus,
+    BackgroundTaskType,
+    TaskPriority,
+)
 from database.models.tasks import BackgroundTask
 from database.repositories.base import BaseRepository
 
@@ -88,6 +92,28 @@ class BackgroundTasksRepository(BaseRepository[BackgroundTask]):
         """
 
         return await self.get_required_by_id(task_id)
+
+    async def get_by_idempotency_key(
+        self,
+        idempotency_key: str,
+    ) -> BackgroundTask | None:
+        """Возвращает фоновую задачу по ключу идемпотентности."""
+
+        normalized_key = idempotency_key.strip()
+        if not normalized_key:
+            raise InvalidQueryError(
+                "Ключ идемпотентности не должен быть пустым.",
+                repository=self.repository_name,
+                operation="get_by_idempotency_key",
+            )
+
+        statement = select(BackgroundTask).where(
+            BackgroundTask.idempotency_key == normalized_key
+        )
+        return await self.scalar_one_or_none(
+            statement,
+            operation="get_by_idempotency_key",
+        )
 
     async def get_by_id(
         self,
@@ -561,6 +587,136 @@ class BackgroundTasksRepository(BaseRepository[BackgroundTask]):
             sort_by="created_at",
             sort_direction="asc" if oldest_first else "desc",
         )
+
+    async def list_due_tasks(
+        self,
+        *,
+        limit: int = 100,
+        task_types: Sequence[BackgroundTaskType] | None = None,
+        now: datetime | None = None,
+    ) -> list[BackgroundTask]:
+        """Возвращает задачи, готовые к запуску, без установки блокировки."""
+
+        self._validate_pagination(offset=0, limit=limit)
+        current_moment = now or self._utc_now()
+
+        priority_rank = case(
+            (BackgroundTask.priority == TaskPriority.CRITICAL, 0),
+            (BackgroundTask.priority == TaskPriority.HIGH, 1),
+            (BackgroundTask.priority == TaskPriority.NORMAL, 2),
+            (BackgroundTask.priority == TaskPriority.LOW, 3),
+            else_=99,
+        )
+
+        conditions: list[Any] = [
+            BackgroundTask.status == BackgroundTaskStatus.PENDING,
+            or_(
+                BackgroundTask.scheduled_at.is_(None),
+                BackgroundTask.scheduled_at <= current_moment,
+            ),
+            BackgroundTask.attempts_count < BackgroundTask.max_attempts,
+            or_(
+                BackgroundTask.locked_until.is_(None),
+                BackgroundTask.locked_until < current_moment,
+            ),
+        ]
+
+        if task_types:
+            conditions.append(BackgroundTask.task_type.in_(task_types))
+
+        statement = (
+            select(BackgroundTask)
+            .where(*conditions)
+            .order_by(
+                priority_rank.asc(),
+                BackgroundTask.scheduled_at.asc().nullsfirst(),
+                BackgroundTask.created_at.asc(),
+            )
+            .limit(limit)
+        )
+
+        return await self.scalars_all(statement, operation="list_due_tasks")
+
+    async def lock_due_tasks(
+        self,
+        *,
+        worker_id: str,
+        lock_ttl_seconds: int,
+        limit: int,
+        task_types: Sequence[BackgroundTaskType] | None = None,
+        now: datetime | None = None,
+        flush: bool = True,
+    ) -> list[BackgroundTask]:
+        """Атомарно выбирает и блокирует задачи, готовые к выполнению."""
+
+        if not worker_id.strip():
+            raise InvalidQueryError(
+                "Идентификатор worker не должен быть пустым.",
+                repository=self.repository_name,
+                operation="lock_due_tasks",
+            )
+
+        if lock_ttl_seconds <= 0:
+            raise InvalidQueryError(
+                "Параметр lock_ttl_seconds должен быть больше нуля.",
+                repository=self.repository_name,
+                operation="lock_due_tasks",
+                details={"lock_ttl_seconds": lock_ttl_seconds},
+            )
+
+        self._validate_pagination(offset=0, limit=limit)
+        current_moment = now or self._utc_now()
+        lock_until = current_moment + timedelta(seconds=lock_ttl_seconds)
+
+        priority_rank = case(
+            (BackgroundTask.priority == TaskPriority.CRITICAL, 0),
+            (BackgroundTask.priority == TaskPriority.HIGH, 1),
+            (BackgroundTask.priority == TaskPriority.NORMAL, 2),
+            (BackgroundTask.priority == TaskPriority.LOW, 3),
+            else_=99,
+        )
+
+        conditions: list[Any] = [
+            BackgroundTask.status == BackgroundTaskStatus.PENDING,
+            or_(
+                BackgroundTask.scheduled_at.is_(None),
+                BackgroundTask.scheduled_at <= current_moment,
+            ),
+            BackgroundTask.attempts_count < BackgroundTask.max_attempts,
+            or_(
+                BackgroundTask.locked_until.is_(None),
+                BackgroundTask.locked_until < current_moment,
+            ),
+        ]
+
+        if task_types:
+            conditions.append(BackgroundTask.task_type.in_(task_types))
+
+        statement = (
+            select(BackgroundTask)
+            .where(*conditions)
+            .order_by(
+                priority_rank.asc(),
+                BackgroundTask.scheduled_at.asc().nullsfirst(),
+                BackgroundTask.created_at.asc(),
+            )
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        )
+
+        tasks = await self.scalars_all(statement, operation="lock_due_tasks")
+
+        for task in tasks:
+            task.start(
+                started_at=current_moment,
+                worker_id=worker_id,
+                locked_until=lock_until,
+            )
+
+        if flush and tasks:
+            await self.flush()
+
+        return tasks
 
     async def find_running_tasks(
         self,
@@ -1330,6 +1486,85 @@ class BackgroundTasksRepository(BaseRepository[BackgroundTask]):
             refresh=refresh,
         )
 
+    async def release_for_retry(
+        self,
+        task: BackgroundTask,
+        *,
+        retry_delay_seconds: int,
+        error_message: str | None = None,
+        error_code: str | None = None,
+        result_data: dict[str, Any] | None = None,
+        progress_percent: int = 0,
+        flush: bool = True,
+        refresh: bool = False,
+    ) -> BackgroundTask:
+        """Возвращает задачу в очередь PENDING для повторной попытки."""
+
+        if retry_delay_seconds < 0:
+            raise InvalidQueryError(
+                "retry_delay_seconds не может быть отрицательным.",
+                repository=self.repository_name,
+                operation="release_for_retry",
+                details={"retry_delay_seconds": retry_delay_seconds},
+            )
+
+        self._validate_progress_percent(progress_percent)
+        retry_at = self._utc_now() + timedelta(seconds=retry_delay_seconds)
+
+        return await self.update(
+            task,
+            {
+                "status": BackgroundTaskStatus.PENDING,
+                "scheduled_at": retry_at,
+                "progress_percent": progress_percent,
+                "result_data": result_data,
+                "error_message": self._normalize_error_message(error_message),
+                "error_code": error_code,
+                "finished_at": None,
+                "locked_by": None,
+                "locked_until": None,
+            },
+            flush=flush,
+            refresh=refresh,
+            allowed_fields={
+                "status",
+                "scheduled_at",
+                "progress_percent",
+                "result_data",
+                "error_message",
+                "error_code",
+                "finished_at",
+                "locked_by",
+                "locked_until",
+            },
+        )
+
+    async def release_for_retry_by_id(
+        self,
+        task_id: uuid.UUID,
+        *,
+        retry_delay_seconds: int,
+        error_message: str | None = None,
+        error_code: str | None = None,
+        result_data: dict[str, Any] | None = None,
+        progress_percent: int = 0,
+        flush: bool = True,
+        refresh: bool = False,
+    ) -> BackgroundTask:
+        """Возвращает задачу в очередь PENDING для повторной попытки по id."""
+
+        task = await self.get_required_by_id(task_id)
+        return await self.release_for_retry(
+            task,
+            retry_delay_seconds=retry_delay_seconds,
+            error_message=error_message,
+            error_code=error_code,
+            result_data=result_data,
+            progress_percent=progress_percent,
+            flush=flush,
+            refresh=refresh,
+        )
+
     async def mark_cancelled(
         self,
         task: BackgroundTask,
@@ -1798,6 +2033,72 @@ class BackgroundTasksRepository(BaseRepository[BackgroundTask]):
             flush=flush,
         )
 
+    async def release_stale_running_tasks(
+        self,
+        *,
+        stale_before: datetime | None = None,
+        retry_delay_seconds: int | None = None,
+        error_message: str | None = None,
+        flush: bool = True,
+    ) -> int:
+        """Возвращает протухшие RUNNING-задачи обратно в PENDING."""
+
+        current_moment = stale_before or self._utc_now()
+        next_schedule = current_moment
+
+        if retry_delay_seconds is not None:
+            if retry_delay_seconds < 0:
+                raise InvalidQueryError(
+                    "retry_delay_seconds не может быть отрицательным.",
+                    repository=self.repository_name,
+                    operation="release_stale_running_tasks",
+                    details={"retry_delay_seconds": retry_delay_seconds},
+                )
+            next_schedule = current_moment + timedelta(seconds=retry_delay_seconds)
+
+        conditions: list[Any] = [
+            BackgroundTask.status == BackgroundTaskStatus.RUNNING,
+            BackgroundTask.locked_until.is_not(None),
+            BackgroundTask.locked_until < current_moment,
+        ]
+
+        values: dict[str, Any] = {
+            "status": BackgroundTaskStatus.PENDING,
+            "scheduled_at": next_schedule,
+            "locked_by": None,
+            "locked_until": None,
+            "started_at": None,
+            "finished_at": None,
+        }
+
+        normalized_error = self._normalize_error_message(error_message)
+        if normalized_error:
+            values["error_message"] = normalized_error
+
+        return await self._bulk_update(
+            conditions=conditions,
+            values=values,
+            operation="release_stale_running_tasks",
+            flush=flush,
+        )
+
+    async def clear_expired_locks(
+        self,
+        *,
+        stale_before: datetime | None = None,
+        retry_delay_seconds: int | None = None,
+        error_message: str | None = None,
+        flush: bool = True,
+    ) -> int:
+        """Очищает протухшие lock-и RUNNING-задач, возвращая задачи в PENDING."""
+
+        return await self.release_stale_running_tasks(
+            stale_before=stale_before,
+            retry_delay_seconds=retry_delay_seconds,
+            error_message=error_message,
+            flush=flush,
+        )
+
     async def delete_finished_tasks(
         self,
         *,
@@ -1849,7 +2150,8 @@ class BackgroundTasksRepository(BaseRepository[BackgroundTask]):
             if flush:
                 await self.flush()
 
-            return int(result.rowcount or 0)  # type: ignore[attr-defined]
+            rowcount = getattr(result, "rowcount", None)
+            return int(rowcount or 0)
 
         except IntegrityError as exc:
             raise self._handle_integrity_error(
@@ -2549,7 +2851,8 @@ class BackgroundTasksRepository(BaseRepository[BackgroundTask]):
             if flush:
                 await self.flush()
 
-            return int(result.rowcount or 0)  # type: ignore[attr-defined]
+            rowcount = getattr(result, "rowcount", None)
+            return int(rowcount or 0)
 
         except IntegrityError as exc:
             raise self._handle_integrity_error(
