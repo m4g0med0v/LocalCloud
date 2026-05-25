@@ -79,7 +79,9 @@ async def generate_file_preview_handler(
                 result_data={
                     "file_id": str(file_row.id),
                     "preview_status": FilePreviewStatus.NOT_REQUIRED.value,
-                    "preview_storage_key": getattr(updated, "preview_storage_key", None),
+                    "preview_storage_key": getattr(
+                        updated, "preview_storage_key", None
+                    ),
                 },
                 progress_percent=100,
             )

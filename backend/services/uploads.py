@@ -372,6 +372,7 @@ class UploadsService:
         """
 
         operation = "get_upload_session"
+        result: UploadSessionRead | None = None
         try:
             async with self.uow_factory() as uow:
                 upload_session = await self._get_owned_session(
@@ -380,9 +381,12 @@ class UploadsService:
                     user_id=user_id,
                     operation=operation,
                 )
-                return UploadSessionRead.model_validate(
+                result = UploadSessionRead.model_validate(
                     _session_snapshot(upload_session)
                 )
+            if result is None:
+                raise _empty_result_error(operation)
+            return result
         except DatabaseError as exc:
             raise self._database_error(exc, operation=operation) from exc
         except ServiceError:
@@ -425,6 +429,7 @@ class UploadsService:
         operation = "list_uploads"
         _validate_pagination(limit=params.limit, offset=params.offset)
         requested_user_id = params.user_id or user_id
+        result: PageResponse[UploadSessionListItem] | None = None
         if requested_user_id != user_id:
             raise PermissionServiceError(
                 "Users can list only their own upload sessions.",
@@ -446,7 +451,7 @@ class UploadsService:
                     )
                 total = await _count_uploads(uow, params=params, user_id=user_id)
                 uploads = await _select_uploads(uow, params=params, user_id=user_id)
-                return PageResponse(
+                result = PageResponse(
                     items=[
                         UploadSessionListItem.model_validate(_session_snapshot(item))
                         for item in uploads
@@ -458,6 +463,9 @@ class UploadsService:
                         count=len(uploads),
                     ),
                 )
+            if result is None:
+                raise _empty_result_error(operation)
+            return result
         except DatabaseError as exc:
             raise self._database_error(exc, operation=operation) from exc
         except ServiceError:
@@ -492,6 +500,7 @@ class UploadsService:
         """
 
         operation = "get_upload_parts"
+        result: list[UploadPartRead] | None = None
         try:
             async with self.uow_factory() as uow:
                 await self._get_owned_session(
@@ -504,7 +513,10 @@ class UploadsService:
                     upload_session_id,
                     limit=REPOSITORY_PAGE_LIMIT,
                 )
-                return [UploadPartRead.model_validate(part) for part in parts]
+                result = [UploadPartRead.model_validate(part) for part in parts]
+            if result is None:
+                raise _empty_result_error(operation)
+            return result
         except DatabaseError as exc:
             raise self._database_error(exc, operation=operation) from exc
         except ServiceError:
@@ -549,6 +561,7 @@ class UploadsService:
         """
 
         operation = "create_part_urls"
+        result: UploadPresignedUrlsResponse | None = None
         try:
             async with self.uow_factory() as uow:
                 upload_session = await self._get_owned_session(
@@ -581,7 +594,10 @@ class UploadsService:
                     part_sizes=[part.size_bytes for part in selected_parts],
                 )
                 await uow.commit()
-                return response
+                result = response
+            if result is None:
+                raise _empty_result_error(operation)
+            return result
         except StorageError as exc:
             raise service_error_from_storage(
                 exc,
@@ -632,6 +648,7 @@ class UploadsService:
         """
 
         operation = "confirm_part"
+        result: UploadProgressRead | None = None
         try:
             async with self.uow_factory() as uow:
                 upload_session = await self._get_owned_session(
@@ -669,7 +686,10 @@ class UploadsService:
                 )
                 snapshot = _session_snapshot(upload_session)
                 await uow.commit()
-                return UploadProgressRead.model_validate(snapshot)
+                result = UploadProgressRead.model_validate(snapshot)
+            if result is None:
+                raise _empty_result_error(operation)
+            return result
         except DatabaseError as exc:
             raise self._database_error(exc, operation=operation) from exc
         except ServiceError:
@@ -981,6 +1001,7 @@ class UploadsService:
         """
 
         operation = "get_progress"
+        result: UploadProgressRead | None = None
         try:
             async with self.uow_factory() as uow:
                 upload_session = await self._get_owned_session(
@@ -989,9 +1010,12 @@ class UploadsService:
                     user_id=user_id,
                     operation=operation,
                 )
-                return UploadProgressRead.model_validate(
+                result = UploadProgressRead.model_validate(
                     _session_snapshot(upload_session)
                 )
+            if result is None:
+                raise _empty_result_error(operation)
+            return result
         except DatabaseError as exc:
             raise self._database_error(exc, operation=operation) from exc
         except ServiceError:
@@ -1187,6 +1211,7 @@ class UploadsService:
             user_id: Идентификатор пользователя для события аудита.
         """
 
+        snapshot: dict[str, Any] | None = None
         try:
             async with self.uow_factory() as uow:
                 upload_session = await uow.upload_sessions.get_session_by_id(
@@ -1211,6 +1236,8 @@ class UploadsService:
                 )
                 snapshot = _session_snapshot(upload_session)
                 await uow.commit()
+            if snapshot is None:
+                return
             await self._safe_log_upload_event(
                 user_id=user_id,
                 action=AuditAction.UPLOAD_SESSION_FAILED,

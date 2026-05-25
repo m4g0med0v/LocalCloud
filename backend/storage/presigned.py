@@ -7,7 +7,6 @@ from minio.datatypes import PostPolicy
 
 from storage.buckets import StorageBucketNameValidator
 from storage.client import StorageClient
-from storage.config import StorageSettings
 from storage.constants import StorageConstants
 from storage.exceptions import (
     StorageConnectionError,

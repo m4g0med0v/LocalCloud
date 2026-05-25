@@ -65,7 +65,12 @@ from services.exceptions import (
     service_error_from_exception,
     service_error_from_storage,
 )
-from storage import StorageError, StorageService, get_storage_service
+from storage import (
+    StorageError,
+    StoragePresignedUrl,
+    StorageService,
+    get_storage_service,
+)
 
 logger = get_logger("services.public_links")
 
@@ -255,6 +260,7 @@ class PublicLinksService:
         """
 
         operation = "get_link"
+        snapshot: dict[str, Any] | None = None
         try:
             async with self.uow_factory() as uow:
                 link = await uow.links.get_required_by_id(link_id)
@@ -265,6 +271,8 @@ class PublicLinksService:
                     operation=operation,
                 )
                 snapshot = _link_snapshot(link)
+            if snapshot is None:
+                raise _empty_result_error(operation)
             return PublicLinkRead.model_validate(snapshot)
         except ServiceError:
             raise
@@ -310,6 +318,8 @@ class PublicLinksService:
         offset = max(0, params.offset)
         sort_by = _normalize_sort_by(params.sort_by)
         direction: Literal["asc", "desc"] = "desc" if params.sort_desc else "asc"
+        items: list[PublicLink] = []
+        total = 0
 
         try:
             async with self.uow_factory() as uow:
@@ -564,6 +574,7 @@ class PublicLinksService:
         """
 
         operation = "validate_access"
+        snapshot: dict[str, Any] | None = None
         try:
             async with self.uow_factory() as uow:
                 link = await uow.links.get_required_available_link_by_token(data.token)
@@ -592,6 +603,8 @@ class PublicLinksService:
                 snapshot = _link_snapshot(link)
                 await uow.commit()
 
+            if snapshot is None:
+                raise _empty_result_error(operation)
             await self._safe_log_event(
                 action=AuditAction.PUBLIC_LINK_OPENED,
                 actor_id=None,
@@ -605,6 +618,39 @@ class PublicLinksService:
                 message=None,
             )
 
+        except ServiceError:
+            raise
+        except DatabaseError as exc:
+            raise service_error_from_database(
+                exc, service=SERVICE_NAME, operation=operation
+            ) from exc
+        except Exception as exc:
+            raise service_error_from_exception(
+                exc, service=SERVICE_NAME, operation=operation
+            ) from exc
+
+    async def get_public_link(self, token: str) -> PublicLinkPublicRead:
+        """Возвращает публичные данные ссылки по токену без проверки пароля.
+
+        Метод используется для публичной карточки ссылки до ввода пароля.
+
+        Args:
+            token: Публичный токен ссылки.
+
+        Returns:
+            Публичные данные ссылки без внутренних полей.
+        """
+
+        operation = "get_public_link"
+        snapshot: dict[str, Any] | None = None
+        try:
+            async with self.uow_factory() as uow:
+                link = await uow.links.get_required_available_link_by_token(token)
+                _ensure_public_access_allowed(link, operation=operation)
+                snapshot = _link_snapshot(link)
+            if snapshot is None:
+                raise _empty_result_error(operation)
+            return PublicLinkPublicRead.model_validate(snapshot)
         except ServiceError:
             raise
         except DatabaseError as exc:
@@ -646,6 +692,10 @@ class PublicLinksService:
         """
 
         operation = "create_public_download_url"
+        link_snapshot: dict[str, Any] | None = None
+        node: FileSystemNode | None = None
+        file: File | None = None
+        presigned: StoragePresignedUrl | None = None
 
         try:
             async with self.uow_factory() as uow:
@@ -681,6 +731,13 @@ class PublicLinksService:
                 link_snapshot = _link_snapshot(link)
                 await uow.commit()
 
+            if (
+                link_snapshot is None
+                or node is None
+                or file is None
+                or presigned is None
+            ):
+                raise _empty_result_error(operation)
             await self._safe_log_event(
                 action=AuditAction.PUBLIC_LINK_DOWNLOADED,
                 actor_id=None,

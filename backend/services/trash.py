@@ -299,6 +299,7 @@ class TrashService:
         """
 
         operation = "get_trash_item"
+        snapshot: dict[str, Any] | None = None
         try:
             async with self.uow_factory() as uow:
                 trash_item = await uow.trash.get_by_id(trash_item_id)
@@ -318,6 +319,8 @@ class TrashService:
                 )
                 snapshot = _trash_item_snapshot(trash_item)
 
+            if snapshot is None:
+                raise _empty_result_error(operation)
             return TrashItemRead.model_validate(snapshot)
 
         except ServiceError:
@@ -372,6 +375,8 @@ class TrashService:
 
         try:
             sort_by = _validate_sort_field(params.sort_by)
+            total = 0
+            items: list[TrashItem] = []
             async with self.uow_factory() as uow:
                 total = await uow.trash.count_user_trash_filtered(
                     owner_id=owner_id,
@@ -793,6 +798,8 @@ class TrashService:
                 )
                 plan = await _build_purge_plan(uow=uow, trash_item=trash_item)
 
+            if plan is None:
+                raise _empty_result_error(operation)
             await self._delete_storage_objects(plan.storage_objects)
 
             async with self.uow_factory() as uow:
@@ -984,6 +991,7 @@ class TrashService:
             Список идентификаторов элементов корзины для purge.
         """
 
+        candidate_ids: list[UUID] | None = None
         async with self.uow_factory() as uow:
             items = await uow.trash.get_expired_items(
                 now=expired_before or datetime.now(UTC),
@@ -994,7 +1002,10 @@ class TrashService:
             )
             if older_than is not None:
                 items = [item for item in items if item.deleted_at <= older_than]
-            return [item.id for item in items]
+            candidate_ids = [item.id for item in items]
+        if candidate_ids is None:
+            raise _empty_result_error("_find_purge_candidates")
+        return candidate_ids
 
     async def _delete_storage_objects(
         self,
@@ -1172,6 +1183,8 @@ async def _build_purge_plan(*, uow: Any, trash_item: TrashItem) -> PurgePlan:
     node = trash_item.node
     if node is None:
         node = await uow.nodes.get_required_by_id(trash_item.node_id)
+    if node is None:
+        raise _empty_result_error("_build_purge_plan")
 
     nodes = [node]
     if node.node_type == NodeType.FOLDER:

@@ -357,6 +357,7 @@ class PermissionsService:
         """
 
         operation = "get_permission"
+        snapshot: dict[str, Any] | None = None
         try:
             async with self.uow_factory() as uow:
                 permission = await uow.permissions.get_permission_by_id(permission_id)
@@ -375,6 +376,8 @@ class PermissionsService:
                     uow=uow,
                 )
                 snapshot = _permission_snapshot(permission)
+            if snapshot is None:
+                raise _empty_result_error(operation)
             return NodePermissionRead.model_validate(snapshot)
 
         except ServiceError:
@@ -421,6 +424,8 @@ class PermissionsService:
 
         operation = "list_node_permissions"
         limit = _validate_limit(limit)
+        items: list[NodePermission] = []
+        total = 0
         try:
             async with self.uow_factory() as uow:
                 await self.access_service.require_access(
@@ -510,6 +515,8 @@ class PermissionsService:
                 details=_error_details(operation),
             )
         limit = _validate_limit(limit)
+        items: list[NodePermission] = []
+        total = 0
         try:
             async with self.uow_factory() as uow:
                 items = await uow.permissions.get_user_permissions(
