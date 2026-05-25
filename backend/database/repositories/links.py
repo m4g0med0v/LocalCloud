@@ -778,7 +778,7 @@ class PublicLinksRepository(BaseRepository[PublicLink]):
 
         if password_hash is not _UNSET:
             values["password_hash"] = self._normalize_optional_string(
-                password_hash,  # type: ignore[arg-type]
+                cast(str | None, password_hash),
                 field_name="password_hash",
                 max_length=255,
             )
@@ -815,7 +815,7 @@ class PublicLinksRepository(BaseRepository[PublicLink]):
 
         if description is not _UNSET:
             values["description"] = self._normalize_description(
-                description,  # type: ignore[arg-type]
+                cast(str | None, description),
             )
 
         if is_active is not None:
@@ -829,7 +829,7 @@ class PublicLinksRepository(BaseRepository[PublicLink]):
 
         if revoke_reason is not _UNSET:
             values["revoke_reason"] = self._normalize_revoke_reason(
-                revoke_reason,  # type: ignore[arg-type]
+                cast(str | None, revoke_reason),
             )
 
         if not values:
@@ -2711,7 +2711,7 @@ class PublicLinksRepository(BaseRepository[PublicLink]):
             if flush:
                 await self.flush()
 
-            return int(result.rowcount or 0)  # type: ignore[attr-defined]
+            return int(getattr(result, "rowcount", 0) or 0)
 
         except IntegrityError as exc:
             raise self._handle_integrity_error(

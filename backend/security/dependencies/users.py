@@ -89,7 +89,7 @@ async def get_current_user(
             удалось загрузить пользователя из базы данных.
     """
 
-    user = await get_user_by_id(cast(AsyncSession, session), payload.user_id)
+    user = await get_user_by_id(session, payload.user_id)
 
     if user is None:
         raise unauthorized_exception("Пользователь из токена не найден.")
@@ -119,7 +119,7 @@ async def get_optional_current_user(
     if payload is None:
         return None
 
-    user = await get_user_by_id(cast(AsyncSession, session), payload.user_id)
+    user = await get_user_by_id(session, payload.user_id)
 
     if user is None:
         raise unauthorized_exception("Пользователь из токена не найден.")
@@ -145,7 +145,7 @@ async def get_current_user_from_refresh_token(
             или не удалось загрузить пользователя из базы данных.
     """
 
-    user = await get_user_by_id(cast(AsyncSession, session), payload.user_id)
+    user = await get_user_by_id(session, payload.user_id)
 
     if user is None:
         raise unauthorized_exception("Пользователь из refresh token не найден.")

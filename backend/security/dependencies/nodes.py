@@ -140,7 +140,7 @@ def require_node_permission_dependency(
                 проверить или доступ запрещён.
         """
 
-        node = await get_node_by_id(cast(AsyncSession, session), node_id)
+        node = await get_node_by_id(session, node_id)
 
         if node is None:
             raise forbidden_exception("Объект файловой системы не найден.")
@@ -204,7 +204,7 @@ def get_accessible_node_dependency(
                 проверить или доступ запрещён.
         """
 
-        node = await get_node_by_id(cast(AsyncSession, session), node_id)
+        node = await get_node_by_id(session, node_id)
 
         if node is None:
             raise forbidden_exception("Объект файловой системы не найден.")

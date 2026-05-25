@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 from security.cookies.enums import CookieErrorCode, CookieSameSite
 from security.cookies.exceptions import CookieError
 
@@ -149,7 +151,7 @@ def normalize_samesite(value: str) -> CookieSameSite:
             },
         )
 
-    return normalized_value  # type: ignore[return-value]
+    return cast(CookieSameSite, normalized_value)
 
 
 def normalize_cookie_domain(value: str | None) -> str | None:

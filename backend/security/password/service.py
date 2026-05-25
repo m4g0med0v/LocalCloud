@@ -3,7 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 
 from passlib.context import CryptContext
-from passlib.exc import InvalidHashError, UnknownHashError
+from passlib.exc import UnknownHashError
 
 from core.config import Settings, get_settings
 from security.password.enums import PasswordHashScheme
@@ -113,7 +113,7 @@ def verify_password(
     try:
         return bool(get_password_context(scheme).verify(plain_password, password_hash))
 
-    except (InvalidHashError, UnknownHashError, ValueError, TypeError):
+    except (UnknownHashError, ValueError, TypeError):
         return False
 
 
@@ -140,7 +140,7 @@ def password_needs_rehash(
     try:
         return bool(get_password_context(scheme).needs_update(password_hash))
 
-    except (InvalidHashError, UnknownHashError, ValueError, TypeError):
+    except (UnknownHashError, ValueError, TypeError):
         return True
 
 

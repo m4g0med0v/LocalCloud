@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 from security.password.dto import PasswordValidationError, PasswordValidationResult
 from security.password.enums import (
     DEFAULT_MAX_PASSWORD_LENGTH,
@@ -37,7 +39,7 @@ def normalize_password_hash_scheme(
             f"Допустимые значения: {', '.join(SUPPORTED_PASSWORD_HASH_SCHEMES)}."
         )
 
-    return normalized_scheme  # type: ignore[return-value]
+    return cast(PasswordHashScheme, normalized_scheme)
 
 
 def validate_password_value(password: str) -> str:

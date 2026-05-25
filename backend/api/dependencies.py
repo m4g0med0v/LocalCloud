@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from fastapi import Request
+
 from services import (
     AuditService,
     AuthService,
@@ -100,6 +102,13 @@ def get_health_service_dependency() -> HealthService:
     return get_health_service()
 
 
+def get_health_service_from_request_dependency(request: Request) -> HealthService:
+    health_service = getattr(request.app.state, "health_service", None)
+    if isinstance(health_service, HealthService):
+        return health_service
+    return get_health_service()
+
+
 __all__ = [
     "get_auth_service_dependency",
     "get_registration_service_dependency",
@@ -117,4 +126,5 @@ __all__ = [
     "get_audit_service_dependency",
     "get_tasks_service_dependency",
     "get_health_service_dependency",
+    "get_health_service_from_request_dependency",
 ]

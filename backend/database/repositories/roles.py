@@ -1663,7 +1663,7 @@ class RolesRepository(BaseRepository[Role]):
             if flush:
                 await self.flush()
 
-            return int(result.rowcount or 0)  # type: ignore[attr-defined]
+            return int(getattr(result, "rowcount", 0) or 0)
 
         except IntegrityError as exc:
             raise self._handle_integrity_error(

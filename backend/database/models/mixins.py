@@ -61,7 +61,12 @@ class SoftDeleteMixin:
         nullable=True,
     )
 
-    def mark_deleted(self, deleted_at: datetime | None = None) -> None:
+    def mark_deleted(
+        self,
+        deleted_at: datetime | None = None,
+        *,
+        deleted_by: uuid.UUID | None = None,
+    ) -> None:
         """Пометить объект как удалённый.
 
         Args:
@@ -71,7 +76,14 @@ class SoftDeleteMixin:
         self.is_deleted = True
         self.deleted_at = deleted_at or datetime.now(UTC)
 
-    def restore(self) -> None:
+    def restore(
+        self,
+        *,
+        parent_id: uuid.UUID | None = None,
+        path: str | None = None,
+        depth: int | None = None,
+        updated_by: uuid.UUID | None = None,
+    ) -> None:
         """Восстановить объект после мягкого удаления."""
         self.is_deleted = False
         self.deleted_at = None

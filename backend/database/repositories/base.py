@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import builtins
 import uuid
 from collections.abc import Iterable, Sequence
 from typing import Any, Generic, TypeVar
@@ -234,7 +235,7 @@ class BaseRepository(Generic[ModelT]):
         limit: int = DEFAULT_LIMIT,
         order_by: Any | Sequence[Any] | None = None,
         conditions: Sequence[Any] | None = None,
-    ) -> list[ModelT]:
+    ) -> builtins.list[ModelT]:
         """Возвращает список сущностей с пагинацией.
 
         Args:
@@ -269,7 +270,7 @@ class BaseRepository(Generic[ModelT]):
         *,
         order_by: Any | Sequence[Any] | None = None,
         conditions: Sequence[Any] | None = None,
-    ) -> list[ModelT]:
+    ) -> builtins.list[ModelT]:
         """Возвращает все записи модели.
 
         Для больших таблиц предпочтительнее использовать ``list()``.
@@ -387,7 +388,7 @@ class BaseRepository(Generic[ModelT]):
         limit: int = DEFAULT_LIMIT,
         order_by: Any | Sequence[Any] | None = None,
         conditions: Sequence[Any] | None = None,
-    ) -> tuple[list[ModelT], int]:
+    ) -> tuple[builtins.list[ModelT], int]:
         """Возвращает страницу данных и общее количество записей.
 
         Args:
@@ -476,7 +477,7 @@ class BaseRepository(Generic[ModelT]):
         entities: Sequence[ModelT],
         *,
         flush: bool = True,
-    ) -> list[ModelT]:
+    ) -> builtins.list[ModelT]:
         """Добавляет несколько сущностей в сессию.
 
         Args:
@@ -720,7 +721,7 @@ class BaseRepository(Generic[ModelT]):
             if flush:
                 await self.flush()
 
-            return int(result.rowcount or 0)  # type: ignore[attr-defined]
+            return int(getattr(result, "rowcount", 0) or 0)
 
         except IntegrityError as exc:
             raise self._handle_integrity_error(
@@ -768,7 +769,7 @@ class BaseRepository(Generic[ModelT]):
         self,
         entity: ModelT,
         *,
-        attribute_names: list[str] | None = None,
+        attribute_names: builtins.list[str] | None = None,
     ) -> ModelT:
         """Обновляет ORM-объект из базы данных.
 
@@ -942,7 +943,7 @@ class BaseRepository(Generic[ModelT]):
         statement: Select[tuple[ModelT]],
         *,
         operation: str = "scalars_all",
-    ) -> list[ModelT]:
+    ) -> builtins.list[ModelT]:
         """Выполняет SELECT и возвращает список ORM-сущностей.
 
         Args:
@@ -1002,7 +1003,7 @@ class BaseRepository(Generic[ModelT]):
         statement: Select[Any],
         *,
         operation: str = "scalar_values",
-    ) -> list[Any]:
+    ) -> builtins.list[Any]:
         """Выполняет SELECT и возвращает список скалярных значений.
 
         Args:

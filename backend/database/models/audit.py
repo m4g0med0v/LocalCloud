@@ -482,8 +482,11 @@ class AuditLog(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
 
         if self.metadata_ is None:
             self.metadata_ = {}
-
-        self.metadata_[key] = value
+        metadata = self.metadata_
+        if metadata is None:
+            metadata = {}
+            self.metadata_ = metadata
+        metadata[key] = value
 
     def add_metadata_many(self, values: dict[str, Any]) -> None:
         """Добавляет несколько значений в metadata.
@@ -494,8 +497,11 @@ class AuditLog(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
 
         if self.metadata_ is None:
             self.metadata_ = {}
-
-        self.metadata_.update(values)
+        metadata = self.metadata_
+        if metadata is None:
+            metadata = {}
+            self.metadata_ = metadata
+        metadata.update(values)
 
     def mark_failure(
         self,

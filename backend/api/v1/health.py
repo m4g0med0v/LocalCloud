@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Response, status
 
-from api.dependencies import get_health_service_dependency
+from api.dependencies import get_health_service_from_request_dependency
 from database.models.enums import HealthStatus
 from schemas.health import (
     DatabaseHealthRead,
@@ -27,7 +27,7 @@ def _is_ok(status_value: HealthStatus | str) -> bool:
     status_code=status.HTTP_200_OK,
 )
 async def get_liveness(
-    health_service: HealthService = Depends(get_health_service_dependency),
+    health_service: HealthService = Depends(get_health_service_from_request_dependency),
 ) -> LivenessResponse:
     """Проверка жизнеспособности приложения."""
 
@@ -41,11 +41,11 @@ async def get_liveness(
 )
 async def get_readiness(
     response: Response,
-    health_service: HealthService = Depends(get_health_service_dependency),
+    health_service: HealthService = Depends(get_health_service_from_request_dependency),
 ) -> ReadinessResponse:
     """Проверка готовности приложения к приёму запросов."""
 
-    readiness = await health_service.get_readiness()
+    readiness = await health_service.get_readiness(check_storage_read_write=True)
     if not readiness.ready:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     return readiness
@@ -58,7 +58,7 @@ async def get_readiness(
 )
 async def get_health_check(
     response: Response,
-    health_service: HealthService = Depends(get_health_service_dependency),
+    health_service: HealthService = Depends(get_health_service_from_request_dependency),
 ) -> HealthCheckResponse:
     """Общая проверка состояния приложения."""
 
@@ -76,7 +76,7 @@ async def get_health_check(
 async def get_database_health(
     response: Response,
     _: CurrentAdminUserDependency,
-    health_service: HealthService = Depends(get_health_service_dependency),
+    health_service: HealthService = Depends(get_health_service_from_request_dependency),
 ) -> DatabaseHealthRead:
     """Проверка состояния базы данных (только для администратора)."""
 
@@ -107,7 +107,7 @@ async def get_database_health(
 async def get_storage_health(
     response: Response,
     _: CurrentAdminUserDependency,
-    health_service: HealthService = Depends(get_health_service_dependency),
+    health_service: HealthService = Depends(get_health_service_from_request_dependency),
 ) -> StorageHealthRead:
     """Проверка состояния объектного хранилища (только для администратора)."""
 

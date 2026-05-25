@@ -366,20 +366,29 @@ class UserQuotaRepository(BaseRepository[UserQuota]):
         new_files_limit: int | None
         if files_limit is _UNSET:
             new_files_limit = quota.files_limit
+        elif files_limit is None:
+            new_files_limit = None
         else:
-            new_files_limit = files_limit  # type: ignore[assignment]
+            assert isinstance(files_limit, int)
+            new_files_limit = files_limit
 
         new_public_links_limit: int | None
         if public_links_limit is _UNSET:
             new_public_links_limit = quota.public_links_limit
+        elif public_links_limit is None:
+            new_public_links_limit = None
         else:
-            new_public_links_limit = public_links_limit  # type: ignore[assignment]
+            assert isinstance(public_links_limit, int)
+            new_public_links_limit = public_links_limit
 
         new_active_upload_sessions_limit: int | None
         if active_upload_sessions_limit is _UNSET:
             new_active_upload_sessions_limit = quota.active_upload_sessions_limit
+        elif active_upload_sessions_limit is None:
+            new_active_upload_sessions_limit = None
         else:
-            new_active_upload_sessions_limit = active_upload_sessions_limit  # type: ignore[assignment]
+            assert isinstance(active_upload_sessions_limit, int)
+            new_active_upload_sessions_limit = active_upload_sessions_limit
 
         self._validate_quota_values(
             storage_limit_bytes=new_storage_limit_bytes,

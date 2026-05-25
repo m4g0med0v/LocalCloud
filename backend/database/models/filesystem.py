@@ -378,10 +378,11 @@ class FileSystemNode(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin)
         self.depth = new_depth
         self.updated_by = updated_by
 
-    def mark_deleted(  # pyright: ignore[reportIncompatibleMethodOverride]
+    def mark_deleted(
         self,
-        deleted_by: uuid.UUID | None = None,
         deleted_at: datetime | None = None,
+        *,
+        deleted_by: uuid.UUID | None = None,
     ) -> None:
         """Помечает узел как удалённый.
 
@@ -395,11 +396,12 @@ class FileSystemNode(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin)
         self.deleted_at = deleted_at or datetime.now(UTC)
         self.deleted_by = deleted_by
 
-    def restore(  # pyright: ignore[reportIncompatibleMethodOverride]
+    def restore(
         self,
-        parent_id: uuid.UUID | None,
-        path: str,
-        depth: int,
+        *,
+        parent_id: uuid.UUID | None = None,
+        path: str | None = None,
+        depth: int | None = None,
         updated_by: uuid.UUID | None = None,
     ) -> None:
         """Восстанавливает узел из корзины.
@@ -414,9 +416,12 @@ class FileSystemNode(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin)
         self.is_deleted = False
         self.deleted_at = None
         self.deleted_by = None
-        self.parent_id = parent_id
-        self.path = path
-        self.depth = depth
+        if parent_id is not None or self.parent_id is not None:
+            self.parent_id = parent_id
+        if path is not None:
+            self.path = path
+        if depth is not None:
+            self.depth = depth
         self.updated_by = updated_by
 
     def make_private(self) -> None:
