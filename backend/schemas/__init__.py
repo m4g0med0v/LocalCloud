@@ -63,7 +63,9 @@ from schemas.auth import (
     LogoutResponse,
     PasswordChangeRequest,
     PasswordResetConfirmRequest,
+    PasswordResetConfirmResponse,
     PasswordResetRequest,
+    PasswordResetRequestResponse,
     RefreshTokenResponse,
     TokenPair,
 )
@@ -256,7 +258,9 @@ __all__ = [
     "AuthSessionRead",
     "PasswordChangeRequest",
     "PasswordResetRequest",
+    "PasswordResetRequestResponse",
     "PasswordResetConfirmRequest",
+    "PasswordResetConfirmResponse",
     # quotas
     "UserQuotaBase",
     "UserQuotaCreate",

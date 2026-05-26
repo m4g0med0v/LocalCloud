@@ -4,7 +4,7 @@ from enum import StrEnum
 from typing import Final, Literal
 
 # Допустимые типы JWT token.
-JwtTokenType = Literal["access", "refresh"]
+JwtTokenType = Literal["access", "refresh", "password_reset"]
 
 
 class JwtClaimName(StrEnum):
@@ -59,4 +59,4 @@ class JwtErrorCode(StrEnum):
 
 
 # Поддерживаемые типы JWT token.
-SUPPORTED_JWT_TOKEN_TYPES: Final[tuple[JwtTokenType, ...]] = ("access", "refresh")
+SUPPORTED_JWT_TOKEN_TYPES: Final[tuple[JwtTokenType, ...]] = ("access", "refresh", "password_reset")

@@ -745,6 +745,7 @@ class AuditService:
         )
 
         logs: list[AuditLog] = []
+
         async with self.uow_factory() as uow:
             logs = await uow.audit.list_logs(
                 offset=0,
@@ -759,6 +760,9 @@ class AuditService:
                 sort_by=cast(AuditSortField, repository_sort_by),
                 sort_direction=repository_sort_direction,
             )
+            # Detach instances before session rollback so their loaded
+            # column values remain accessible after the session closes.
+            uow.session.expunge_all()
 
         filtered_logs = [log for log in logs if self._matches_params(log, params)]
 
@@ -771,7 +775,7 @@ class AuditService:
             )
 
         if ignore_pagination:
-            return filtered_logs
+            return list(filtered_logs)
 
         return filtered_logs[params.offset : params.offset + params.limit]
 

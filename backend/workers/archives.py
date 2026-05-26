@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import os
 import posixpath
@@ -26,7 +26,7 @@ from workers.types import WorkerTaskExecutionContext, WorkerTaskExecutionResult
 async def create_folder_archive_handler(
     context: WorkerTaskExecutionContext,
 ) -> WorkerTaskExecutionResult:
-    """РЎРѕР·РґР°С‘С‚ ZIP-Р°СЂС…РёРІ РїР°РїРєРё РІ С„РѕРЅРѕРІРѕРј СЂРµР¶РёРјРµ."""
+    """Создаёт ZIP-архив папки в фоновом режиме."""
 
     temp_zip_path: str | None = None
     folder_node_snapshot: dict[str, Any] | None = None
@@ -99,7 +99,7 @@ async def create_folder_archive_handler(
 
         if folder_node_snapshot is None:
             return failure_result(
-                error_message="РЈРєР°Р·Р°РЅРЅР°СЏ РїР°РїРєР° РЅРµ РЅР°Р№РґРµРЅР°.",
+                error_message="Указанная папка не найдена.",
                 error_code="folder_not_found",
                 result_data={"folder_node_id": str(folder_node_id)},
                 retry=False,
@@ -108,7 +108,7 @@ async def create_folder_archive_handler(
 
         if folder_node_snapshot.get("node_type") != NodeType.FOLDER:
             return failure_result(
-                error_message="РЈРєР°Р·Р°РЅРЅС‹Р№ СѓР·РµР» РЅРµ СЏРІР»СЏРµС‚СЃСЏ РїР°РїРєРѕР№.",
+                error_message="Указанный узел не является папкой.",
                 error_code="node_is_not_folder",
                 result_data={"folder_node_id": str(folder_node_id)},
                 retry=False,
@@ -125,7 +125,7 @@ async def create_folder_archive_handler(
         )
         if not (can_read and can_download):
             return failure_result(
-                error_message="РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РїСЂР°РІ РґР»СЏ Р°СЂС…РёРІР°С†РёРё РїР°РїРєРё.",
+                error_message="Недостаточно прав для архивации папки.",
                 error_code="permission_denied",
                 result_data={
                     "folder_node_id": str(folder_node_id),
@@ -207,13 +207,13 @@ async def create_folder_archive_handler(
 
     except (StorageConnectionError, DatabaseConnectionError) as exc:
         return retry_result(
-            error_message="Р’СЂРµРјРµРЅРЅР°СЏ РѕС€РёР±РєР° РїСЂРё СЃРѕР·РґР°РЅРёРё Р°СЂС…РёРІР° РїР°РїРєРё.",
+            error_message="Временная ошибка при создании архива папки.",
             error_code="temporary_unavailable",
             result_data={"reason": str(exc), "error_type": exc.__class__.__name__},
         )
     except (ServiceError, StorageError) as exc:
         return failure_result(
-            error_message="РћС€РёР±РєР° СЃРѕР·РґР°РЅРёСЏ Р°СЂС…РёРІР° РїР°РїРєРё.",
+            error_message="Ошибка создания архива папки.",
             error_code="create_folder_archive_failed",
             result_data={"reason": str(exc), "error_type": exc.__class__.__name__},
             retry=False,
@@ -221,7 +221,7 @@ async def create_folder_archive_handler(
         )
     except Exception as exc:
         return failure_result(
-            error_message="РќРµРїСЂРµРґРІРёРґРµРЅРЅР°СЏ РѕС€РёР±РєР° СЃРѕР·РґР°РЅРёСЏ Р°СЂС…РёРІР° РїР°РїРєРё.",
+            error_message="Непредвиденная ошибка создания архива папки.",
             error_code="unexpected_create_folder_archive_error",
             result_data={"reason": str(exc), "error_type": exc.__class__.__name__},
             retry=False,
@@ -284,7 +284,7 @@ def _safe_archive_member_path(
     file_node_path: str,
     fallback_name: str,
 ) -> str:
-    """Р¤РѕСЂРјРёСЂСѓРµС‚ Р±РµР·РѕРїР°СЃРЅС‹Р№ РѕС‚РЅРѕСЃРёС‚РµР»СЊРЅС‹Р№ РїСѓС‚СЊ С„Р°Р№Р»Р° РІРЅСѓС‚СЂРё ZIP."""
+    """Формирует безопасный относительный путь файла внутри ZIP."""
 
     root = _normalize_fs_path(folder_root_path)
     file_path = _normalize_fs_path(file_node_path)
@@ -303,11 +303,11 @@ def _safe_archive_member_path(
         or "/../" in normalized
     ):
         raise ValueError(
-            "РћР±РЅР°СЂСѓР¶РµРЅР° РїРѕРїС‹С‚РєР° path traversal РїСЂРё С„РѕСЂРјРёСЂРѕРІР°РЅРёРё ZIP-Р°СЂС…РёРІР°."
+            "Обнаружена попытка path traversal при формировании ZIP-архива."
         )
 
     if PurePosixPath(normalized).is_absolute():
-        raise ValueError("РџСѓС‚СЊ РІРЅСѓС‚СЂРё ZIP РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РѕС‚РЅРѕСЃРёС‚РµР»СЊРЅС‹Рј.")
+        raise ValueError("Путь внутри ZIP должен быть относительным.")
 
     return normalized
 
@@ -320,11 +320,11 @@ def _normalize_fs_path(value: str) -> str:
 
 
 def _payload_uuid_alias(payload: Any, *keys: str) -> UUID:
-    """РР·РІР»РµРєР°РµС‚ UUID РёР· РїРµСЂРІРѕРіРѕ РЅР°Р№РґРµРЅРЅРѕРіРѕ РєР»СЋС‡Р° payload."""
+    """Извлекает UUID из первого найденного ключа payload."""
 
     if not hasattr(payload, "get"):
         raise WorkerTaskHandlerError(
-            "Payload Р·Р°РґР°С‡Рё РґРѕР»Р¶РµРЅ РїРѕРґРґРµСЂР¶РёРІР°С‚СЊ РґРѕСЃС‚СѓРї РїРѕ РєР»СЋС‡Сѓ.",
+            "Payload задачи должен поддерживать доступ по ключу.",
             operation="require_payload_value",
         )
 
@@ -337,21 +337,21 @@ def _payload_uuid_alias(payload: Any, *keys: str) -> UUID:
                 return UUID(value.strip())
             except ValueError as exc:
                 raise WorkerTaskHandlerError(
-                    "Payload СЃРѕРґРµСЂР¶РёС‚ РЅРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ UUID.",
+                    "Payload содержит некорректный UUID.",
                     operation="require_payload_value",
                     details={"key": key, "value": value},
                     cause=exc,
                 ) from exc
 
     raise WorkerTaskHandlerError(
-        "Р’ payload РѕС‚СЃСѓС‚СЃС‚РІСѓРµС‚ РѕР±СЏР·Р°С‚РµР»СЊРЅС‹Р№ UUID.",
+        "В payload отсутствует обязательный UUID.",
         operation="require_payload_value",
         details={"keys": list(keys)},
     )
 
 
 def _resolve_folder_node_id(payload: Any, *, task_meta: dict[str, Any] | None) -> UUID:
-    """РћРїСЂРµРґРµР»СЏРµС‚ UUID РїР°РїРєРё РёР· payload РёР»Рё СЃРІСЏР·Рё Р·Р°РґР°С‡Рё."""
+    """Определяет UUID папки из payload или связи задачи."""
 
     try:
         return _payload_uuid_alias(payload, "folder_node_id", "folder_id")
@@ -363,7 +363,7 @@ def _resolve_folder_node_id(payload: Any, *, task_meta: dict[str, Any] | None) -
 
 
 def _resolve_requested_by(payload: Any, *, task_meta: dict[str, Any] | None) -> UUID:
-    """РћРїСЂРµРґРµР»СЏРµС‚ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ, Р·Р°РїСЂРѕСЃРёРІС€РµРіРѕ СЃРѕР·РґР°РЅРёРµ Р°СЂС…РёРІР°."""
+    """Определяет пользователя, запросившего создание архива."""
 
     if hasattr(payload, "get"):
         raw_value = payload.get("requested_by") or payload.get("user_id")
@@ -374,7 +374,7 @@ def _resolve_requested_by(payload: Any, *, task_meta: dict[str, Any] | None) -> 
                 return UUID(raw_value.strip())
             except ValueError as exc:
                 raise WorkerTaskHandlerError(
-                    "Payload СЃРѕРґРµСЂР¶РёС‚ РЅРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.",
+                    "Payload содержит некорректный идентификатор пользователя.",
                     operation="require_payload_value",
                     details={"key": "requested_by", "value": raw_value},
                     cause=exc,
@@ -385,7 +385,7 @@ def _resolve_requested_by(payload: Any, *, task_meta: dict[str, Any] | None) -> 
         return created_by
 
     raise WorkerTaskHandlerError(
-        "РќРµ СѓРґР°Р»РѕСЃСЊ РѕРїСЂРµРґРµР»РёС‚СЊ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ, Р·Р°РїСЂРѕСЃРёРІС€РµРіРѕ Р°СЂС…РёРІ.",
+        "Не удалось определить пользователя, запросившего архив.",
         operation="require_payload_value",
         details={"task_id": str("" if task_meta is None else task_meta.get("id", ""))},
     )
@@ -394,4 +394,3 @@ def _resolve_requested_by(payload: Any, *, task_meta: dict[str, Any] | None) -> 
 __all__ = [
     "create_folder_archive_handler",
 ]
-

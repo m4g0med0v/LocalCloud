@@ -439,7 +439,7 @@ class PasswordResetConfirmRequest(BaseSchema):
 
     @field_validator("token")
     @classmethod
-    def validate_token(cls, value: str) -> str:
+    def validate_reset_token(cls, value: str) -> str:
         """Нормализует и проверяет токен восстановления пароля.
 
         Args:
@@ -478,3 +478,43 @@ class PasswordResetConfirmRequest(BaseSchema):
             raise ValueError("new_password не должен быть пустым.")
 
         return value
+
+
+class PasswordResetRequestResponse(BaseSchema):
+    """Ответ на запрос сброса пароля.
+
+    Возвращается при инициации сброса пароля. В продакшн-среде токен
+    доставляется по email; здесь он возвращается напрямую, поскольку
+    сервис отправки писем не реализован.
+
+    Attributes:
+        reset_token: JWT-токен сброса пароля.
+        expires_at: Дата и время истечения токена.
+        message: Информационное сообщение для клиента.
+    """
+
+    reset_token: str = Field(
+        ...,
+        description="JWT-токен сброса пароля.",
+    )
+    expires_at: datetime = Field(
+        ...,
+        description="Дата и время истечения токена сброса пароля.",
+    )
+    message: str = Field(
+        ...,
+        description="Информационное сообщение для клиента.",
+    )
+
+
+class PasswordResetConfirmResponse(BaseSchema):
+    """Ответ на подтверждение сброса пароля.
+
+    Attributes:
+        message: Сообщение об успешном изменении пароля.
+    """
+
+    message: str = Field(
+        ...,
+        description="Сообщение об успешном изменении пароля.",
+    )

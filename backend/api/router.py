@@ -23,6 +23,7 @@ from fastapi import APIRouter
 
 from api.v1.audit import router as audit_router
 from api.v1.auth import router as auth_router
+from api.v1.downloads import router as downloads_router
 from api.v1.files import router as files_router
 from api.v1.folders import router as folders_router
 from api.v1.health import router as health_router
@@ -56,6 +57,7 @@ v1_router.include_router(nodes_router)
 v1_router.include_router(folders_router)
 v1_router.include_router(files_router)
 v1_router.include_router(uploads_router)
+v1_router.include_router(downloads_router)
 v1_router.include_router(trash_router)
 v1_router.include_router(permissions_router)
 v1_router.include_router(public_links_router)
