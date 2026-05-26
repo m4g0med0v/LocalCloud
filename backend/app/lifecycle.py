@@ -1,3 +1,17 @@
+"""Управление жизненным циклом backend-приложения.
+
+Модуль содержит функции startup и shutdown для FastAPI-приложения.
+Во время запуска выполняется настройка логирования, инициализация подключения
+к базе данных, проверка доступности базы данных, подготовка объектного
+хранилища и создание сервиса проверки состояния приложения.
+
+Во время завершения работы модуль корректно закрывает клиент объектного
+хранилища и подключение к базе данных.
+
+Attributes:
+    logger: Логгер жизненного цикла backend-приложения.
+"""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -25,7 +39,26 @@ logger = get_logger("app.lifecycle")
 
 
 async def startup_backend(app: FastAPI) -> None:
-    """Выполняет startup backend-приложения."""
+    """Выполняет startup backend-приложения.
+
+    Настраивает логирование, сохраняет настройки и время запуска в состоянии
+    приложения, инициализирует клиент базы данных, проверяет подключение
+    к базе данных, подготавливает бакеты объектного хранилища и создаёт сервис
+    проверки состояния приложения.
+
+    Если на одном из этапов запуска возникает ошибка, выполняется безопасное
+    освобождение уже инициализированных ресурсов.
+
+    Args:
+        app: Экземпляр FastAPI-приложения, для которого выполняется startup.
+
+    Returns:
+        None.
+
+    Raises:
+        Exception: Если не удалось инициализировать базу данных, объектное
+            хранилище, health-сервис или другой обязательный ресурс приложения.
+    """
 
     settings = get_settings()
     storage_service: StorageService | None = None
@@ -65,7 +98,18 @@ async def startup_backend(app: FastAPI) -> None:
 
 
 async def shutdown_backend(app: FastAPI) -> None:
-    """Выполняет корректное завершение backend-приложения."""
+    """Выполняет корректное завершение backend-приложения.
+
+    Получает сервис объектного хранилища из состояния приложения, закрывает
+    связанные ресурсы, закрывает клиент базы данных и очищает ссылки на сервисы
+    в `app.state`.
+
+    Args:
+        app: Экземпляр FastAPI-приложения, для которого выполняется shutdown.
+
+    Returns:
+        None.
+    """
 
     storage_service = _get_state_value(app, "storage_service")
     await _safe_shutdown_resources(storage_service)
@@ -77,7 +121,18 @@ async def shutdown_backend(app: FastAPI) -> None:
 
 
 def get_app_settings(app: FastAPI) -> Settings:
-    """Возвращает settings, сохранённые в state приложения."""
+    """Возвращает настройки приложения.
+
+    Пытается получить объект настроек из `app.state.settings`. Если настройки
+    ещё не сохранены в состоянии приложения или имеют неподходящий тип,
+    возвращает настройки через стандартную функцию `get_settings`.
+
+    Args:
+        app: Экземпляр FastAPI-приложения.
+
+    Returns:
+        Настройки приложения.
+    """
 
     state_settings = _get_state_value(app, "settings")
     if isinstance(state_settings, Settings):
@@ -86,6 +141,20 @@ def get_app_settings(app: FastAPI) -> Settings:
 
 
 async def _safe_shutdown_resources(storage_service: StorageService | None) -> None:
+    """Безопасно освобождает инфраструктурные ресурсы приложения.
+
+    Закрывает клиент объектного хранилища, если он был передан, и клиент базы
+    данных, если он был инициализирован. Ошибки закрытия ресурсов не пробрасывает
+    дальше, а записывает в лог предупреждение.
+
+    Args:
+        storage_service: Сервис объектного хранилища, клиент которого нужно
+            закрыть.
+
+    Returns:
+        None.
+    """
+
     if storage_service is not None:
         try:
             await storage_service.client.close()
@@ -106,6 +175,19 @@ async def _safe_shutdown_resources(storage_service: StorageService | None) -> No
 
 
 def _get_state_value(app: FastAPI, name: str) -> Any | None:
+    """Возвращает значение из состояния приложения.
+
+    Извлекает атрибут из `app.state` по имени. Если атрибут отсутствует,
+    возвращает `None`.
+
+    Args:
+        app: Экземпляр FastAPI-приложения.
+        name: Имя атрибута в состоянии приложения.
+
+    Returns:
+        Значение из состояния приложения или `None`.
+    """
+
     return getattr(app.state, name, None)
 
 

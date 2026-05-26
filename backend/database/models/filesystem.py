@@ -1,3 +1,21 @@
+"""ORM-модели файловой системы, файлов, версий и корзины.
+
+Модуль содержит SQLAlchemy-модели для представления виртуальной файловой
+системы LocalCloud: общих узлов, файлов, папок, версий файлов и элементов
+корзины.
+
+Модели описывают иерархию файлов и папок, связь файлов с объектами MinIO/S3,
+историю версий, статусы обработки и предпросмотра, а также восстановление
+и окончательное удаление объектов через корзину.
+
+Attributes:
+    FileSystemNode: ORM-модель общего узла файловой системы.
+    File: ORM-модель метаданных файла.
+    Folder: ORM-модель метаданных папки.
+    FileVersion: ORM-модель версии файла.
+    TrashItem: ORM-модель элемента корзины.
+"""
+
 from __future__ import annotations
 
 import uuid
@@ -44,16 +62,36 @@ if TYPE_CHECKING:
 class FileSystemNode(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
     """Узел файловой системы.
 
-    Представляет общий элемент виртуальной файловой системы.
+    Представляет общий элемент виртуальной файловой системы. Конкретный тип
+    узла определяется полем `node_type`: файл или папка. Иерархия хранится
+    через `parent_id`, а для ускорения поиска и перемещения используется
+    материализованный путь `path`.
 
-    Конкретный тип узла определяется полем ``node_type``:
-        - file;
-        - folder.
+    Attributes:
+        owner_id: Пользователь, которому принадлежит узел файловой системы.
+        parent_id: Родительская папка. `None` означает, что узел расположен
+            на корневом уровне.
+        name: Имя файла или папки, отображаемое пользователю.
+        node_type: Тип узла файловой системы.
+        visibility: Видимость узла: private, shared или public.
+        path: Материализованный логический путь узла.
+        depth: Глубина вложенности узла.
+        created_by: Пользователь, создавший узел.
+        updated_by: Пользователь, последним изменивший узел.
+        deleted_by: Пользователь, удаливший узел.
+        owner: Владелец узла файловой системы.
+        creator: Пользователь, создавший узел.
+        updater: Пользователь, последним обновивший узел.
+        deleter: Пользователь, удаливший узел.
+        parent: Родительский узел файловой системы.
+        children: Дочерние узлы файловой системы.
+        file: Метаданные файла, если узел является файлом.
+        folder: Метаданные папки, если узел является папкой.
+        trash_item: Элемент корзины, связанный с удалённым узлом.
+        permissions: Разрешения, выданные на узел.
+        public_links: Публичные ссылки, связанные с узлом.
 
-    Иерархия хранится через ``parent_id``. Для ускорения поиска и перемещения
-    также используется материализованный путь.
-
-    Таблица:
+    Table:
         file_system_nodes
     """
 
@@ -303,37 +341,64 @@ class FileSystemNode(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin)
 
     @property
     def is_file(self) -> bool:
-        """Возвращает True, если узел является файлом."""
+        """Проверяет, является ли узел файлом.
+
+        Returns:
+            `True`, если тип узла равен `NodeType.FILE`, иначе `False`.
+        """
 
         return self.node_type == NodeType.FILE
 
     @property
     def is_folder(self) -> bool:
-        """Возвращает True, если узел является папкой."""
+        """Проверяет, является ли узел папкой.
+
+        Returns:
+            `True`, если тип узла равен `NodeType.FOLDER`, иначе `False`.
+        """
 
         return self.node_type == NodeType.FOLDER
 
     @property
     def is_root_level(self) -> bool:
-        """Возвращает True, если узел расположен в корне хранилища."""
+        """Проверяет расположение узла на корневом уровне.
+
+        Returns:
+            `True`, если у узла отсутствует родительская папка, иначе `False`.
+        """
 
         return self.parent_id is None
 
     @property
     def is_private(self) -> bool:
-        """Возвращает True, если узел приватный."""
+        """Проверяет, является ли узел приватным.
+
+        Returns:
+            `True`, если видимость узла равна `NodeVisibility.PRIVATE`,
+            иначе `False`.
+        """
 
         return self.visibility == NodeVisibility.PRIVATE
 
     @property
     def is_shared(self) -> bool:
-        """Возвращает True, если узел имеет выданные права доступа."""
+        """Проверяет, имеет ли узел выданные права доступа.
+
+        Returns:
+            `True`, если видимость узла равна `NodeVisibility.SHARED`,
+            иначе `False`.
+        """
 
         return self.visibility == NodeVisibility.SHARED
 
     @property
     def is_public(self) -> bool:
-        """Возвращает True, если узел доступен через публичную ссылку."""
+        """Проверяет, доступен ли узел публично.
+
+        Returns:
+            `True`, если видимость узла равна `NodeVisibility.PUBLIC`,
+            иначе `False`.
+        """
 
         return self.visibility == NodeVisibility.PUBLIC
 
@@ -344,12 +409,16 @@ class FileSystemNode(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin)
     def rename(self, new_name: str, updated_by: uuid.UUID | None = None) -> None:
         """Переименовывает узел.
 
-        Изменение ``path`` для самого узла и его потомков должно выполняться
+        Изменяет только имя узла и пользователя, выполнившего обновление.
+        Пересчёт `path` для самого узла и его потомков должен выполняться
         в сервисном слое, потому что требует знания всей иерархии.
 
         Args:
             new_name: Новое имя узла.
             updated_by: Идентификатор пользователя, изменившего узел.
+
+        Returns:
+            None.
         """
 
         self.name = new_name
@@ -364,13 +433,18 @@ class FileSystemNode(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin)
     ) -> None:
         """Перемещает узел в другую папку.
 
-        Обновление путей дочерних узлов выполняется сервисным слоем.
+        Обновляет родительскую папку, материализованный путь и глубину
+        текущего узла. Обновление путей дочерних узлов выполняется сервисным
+        слоем.
 
         Args:
             new_parent_id: Идентификатор новой родительской папки.
             new_path: Новый материализованный путь.
             new_depth: Новая глубина вложенности.
             updated_by: Идентификатор пользователя, переместившего узел.
+
+        Returns:
+            None.
         """
 
         self.parent_id = new_parent_id
@@ -386,10 +460,17 @@ class FileSystemNode(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin)
     ) -> None:
         """Помечает узел как удалённый.
 
+        Устанавливает признак soft-delete, дату удаления и пользователя,
+        выполнившего удаление. Если дата удаления не передана, используется
+        текущее UTC-время.
+
         Args:
-            deleted_by: Идентификатор пользователя, удалившего узел.
             deleted_at: Дата и время удаления. Если не передано, используется
                 текущее UTC-время.
+            deleted_by: Идентификатор пользователя, удалившего узел.
+
+        Returns:
+            None.
         """
 
         self.is_deleted = True
@@ -406,11 +487,18 @@ class FileSystemNode(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin)
     ) -> None:
         """Восстанавливает узел из корзины.
 
+        Снимает признаки удаления и при необходимости обновляет родительскую
+        папку, материализованный путь и глубину вложенности. Пересчёт путей
+        потомков должен выполняться сервисным слоем.
+
         Args:
             parent_id: Идентификатор родительской папки после восстановления.
             path: Восстановленный материализованный путь.
             depth: Глубина вложенности после восстановления.
             updated_by: Идентификатор пользователя, восстановившего узел.
+
+        Returns:
+            None.
         """
 
         self.is_deleted = False
@@ -425,21 +513,39 @@ class FileSystemNode(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin)
         self.updated_by = updated_by
 
     def make_private(self) -> None:
-        """Делает узел приватным."""
+        """Делает узел приватным.
+
+        Returns:
+            None.
+        """
 
         self.visibility = NodeVisibility.PRIVATE
 
     def make_shared(self) -> None:
-        """Помечает узел как общий."""
+        """Помечает узел как общий.
+
+        Returns:
+            None.
+        """
 
         self.visibility = NodeVisibility.SHARED
 
     def make_public(self) -> None:
-        """Помечает узел как публичный."""
+        """Помечает узел как публичный.
+
+        Returns:
+            None.
+        """
 
         self.visibility = NodeVisibility.PUBLIC
 
     def __repr__(self) -> str:
+        """Возвращает строковое представление узла файловой системы.
+
+        Returns:
+            Строковое представление `FileSystemNode` с основными полями.
+        """
+
         return (
             f"<FileSystemNode("
             f"id={self.id}, "
@@ -455,10 +561,29 @@ class FileSystemNode(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin)
 class File(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     """Метаданные файла.
 
-    Хранит сведения о файле, объекте MinIO/S3, размере, MIME-типе,
-    контрольной сумме, статусе обработки и статусе предпросмотра.
+    Хранит сведения о файле, связанном узле файловой системы, объекте MinIO/S3,
+    размере, MIME-типе, расширении, контрольной сумме, статусе хранения,
+    статусе обработки и статусе предпросмотра.
 
-    Таблица:
+    Attributes:
+        node_id: Узел файловой системы, связанный с этим файлом.
+        storage_bucket: Bucket MinIO/S3, в котором хранится объект файла.
+        storage_key: Ключ объекта MinIO/S3 для текущего содержимого файла.
+        size_bytes: Размер файла в байтах.
+        mime_type: MIME-тип файла.
+        extension: Расширение файла без ведущей точки.
+        checksum: Контрольная сумма файла.
+        checksum_algorithm: Алгоритм контрольной суммы, например sha256.
+        storage_status: Статус физического объекта в MinIO/S3.
+        processing_status: Статус постобработки файла.
+        preview_status: Статус генерации предпросмотра.
+        preview_storage_key: Ключ объекта предпросмотра в MinIO/S3.
+        current_version_id: Текущая активная версия файла.
+        node: Узел файловой системы, связанный с файлом.
+        versions: Все версии файла.
+        current_version: Текущая активная версия файла.
+
+    Table:
         files
     """
 
@@ -633,7 +758,12 @@ class File(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     @property
     def preview_available(self) -> bool:
-        """Возвращает True, если предпросмотр файла готов."""
+        """Проверяет доступность предпросмотра файла.
+
+        Returns:
+            `True`, если предпросмотр готов и ключ объекта предпросмотра
+            сохранён, иначе `False`.
+        """
 
         return (
             self.preview_status == FilePreviewStatus.READY
@@ -642,7 +772,12 @@ class File(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     @property
     def is_ready(self) -> bool:
-        """Возвращает True, если файл готов к использованию."""
+        """Проверяет готовность файла к использованию.
+
+        Returns:
+            `True`, если файл успешно обработан и физический объект доступен
+            в хранилище, иначе `False`.
+        """
 
         return (
             self.processing_status == FileProcessingStatus.READY
@@ -650,28 +785,51 @@ class File(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         )
 
     def mark_processing(self) -> None:
-        """Помечает файл как находящийся в обработке."""
+        """Помечает файл как находящийся в обработке.
+
+        Returns:
+            None.
+        """
 
         self.processing_status = FileProcessingStatus.PROCESSING
 
     def mark_ready(self) -> None:
-        """Помечает файл как готовый."""
+        """Помечает файл как готовый.
+
+        Устанавливает статус обработки `READY` и статус объекта хранилища
+        `AVAILABLE`.
+
+        Returns:
+            None.
+        """
 
         self.processing_status = FileProcessingStatus.READY
         self.storage_status = StorageObjectStatus.AVAILABLE
 
     def mark_processing_failed(self) -> None:
-        """Помечает обработку файла как завершившуюся ошибкой."""
+        """Помечает обработку файла как завершившуюся ошибкой.
+
+        Returns:
+            None.
+        """
 
         self.processing_status = FileProcessingStatus.FAILED
 
     def mark_storage_missing(self) -> None:
-        """Помечает физический объект как отсутствующий."""
+        """Помечает физический объект как отсутствующий.
+
+        Returns:
+            None.
+        """
 
         self.storage_status = StorageObjectStatus.MISSING
 
     def mark_storage_corrupted(self) -> None:
-        """Помечает физический объект как повреждённый."""
+        """Помечает физический объект как повреждённый.
+
+        Returns:
+            None.
+        """
 
         self.storage_status = StorageObjectStatus.CORRUPTED
 
@@ -680,6 +838,9 @@ class File(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
         Args:
             preview_storage_key: Ключ объекта предпросмотра в MinIO/S3.
+
+        Returns:
+            None.
         """
 
         self.preview_storage_key = preview_storage_key
@@ -688,14 +849,26 @@ class File(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     def set_current_version(self, version: FileVersion) -> None:
         """Устанавливает текущую версию файла.
 
+        Связывает файл с переданной версией и записывает её идентификатор
+        в поле `current_version_id`.
+
         Args:
             version: Версия, которая должна стать текущей.
+
+        Returns:
+            None.
         """
 
         self.current_version = version
         self.current_version_id = version.id
 
     def __repr__(self) -> str:
+        """Возвращает строковое представление файла.
+
+        Returns:
+            Строковое представление `File` с основными полями.
+        """
+
         return (
             f"<File("
             f"id={self.id}, "
@@ -710,10 +883,17 @@ class File(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 class Folder(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     """Метаданные папки.
 
-    Иерархия папок хранится в ``file_system_nodes`` через ``parent_id``.
-    Эта таблица содержит только дополнительные свойства, относящиеся к папке.
+    Хранит дополнительные свойства папки. Сама иерархия папок хранится
+    в `file_system_nodes` через поле `parent_id`; эта таблица содержит только
+    данные, относящиеся непосредственно к папке.
 
-    Таблица:
+    Attributes:
+        node_id: Узел файловой системы, связанный с этой папкой.
+        description: Необязательное описание папки.
+        color: Цветовая метка папки в интерфейсе.
+        node: Узел файловой системы, связанный с папкой.
+
+    Table:
         folders
     """
 
@@ -767,15 +947,26 @@ class Folder(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     ) -> None:
         """Обновляет пользовательские метаданные папки.
 
+        Заменяет описание и цветовую метку папки переданными значениями.
+
         Args:
             description: Новое описание папки.
             color: Новая цветовая метка папки.
+
+        Returns:
+            None.
         """
 
         self.description = description
         self.color = color
 
     def __repr__(self) -> str:
+        """Возвращает строковое представление папки.
+
+        Returns:
+            Строковое представление `Folder` с основными полями.
+        """
+
         return f"<Folder(id={self.id}, node_id={self.node_id}, color={self.color!r})>"
 
 
@@ -786,7 +977,24 @@ class FileVersion(Base, UUIDPrimaryKeyMixin):
     хранить историю изменений файла и при необходимости восстанавливать
     предыдущие версии.
 
-    Таблица:
+    Attributes:
+        file_id: Файл, к которому относится версия.
+        version_number: Порядковый номер версии внутри файла.
+        status: Статус версии файла.
+        storage_bucket: Bucket MinIO/S3, в котором хранится объект версии.
+        storage_key: Ключ объекта MinIO/S3 для версии файла.
+        size_bytes: Размер версии файла в байтах.
+        checksum: Контрольная сумма версии файла.
+        checksum_algorithm: Алгоритм контрольной суммы версии.
+        mime_type: MIME-тип версии файла.
+        created_at: Дата и время создания версии.
+        created_by: Пользователь, создавший версию файла.
+        change_comment: Комментарий к изменению версии.
+        is_current: Признак текущей активной версии файла.
+        file: Файл, к которому относится версия.
+        creator: Пользователь, создавший версию файла.
+
+    Table:
         file_versions
     """
 
@@ -944,7 +1152,12 @@ class FileVersion(Base, UUIDPrimaryKeyMixin):
 
     @property
     def is_active(self) -> bool:
-        """Возвращает True, если версия активна."""
+        """Проверяет, является ли версия активной.
+
+        Returns:
+            `True`, если статус версии равен `FileVersionStatus.ACTIVE`,
+            иначе `False`.
+        """
 
         return self.status == FileVersionStatus.ACTIVE
 
@@ -955,26 +1168,50 @@ class FileVersion(Base, UUIDPrimaryKeyMixin):
     def make_current(self) -> None:
         """Помечает версию как текущую.
 
-        Снятие флага ``is_current`` с других версий этого файла должно
-        выполняться в сервисном слое.
+        Устанавливает флаг `is_current` и активный статус версии. Снятие флага
+        `is_current` с других версий этого файла должно выполняться
+        в сервисном слое.
+
+        Returns:
+            None.
         """
 
         self.is_current = True
         self.status = FileVersionStatus.ACTIVE
 
     def archive(self) -> None:
-        """Архивирует версию файла."""
+        """Архивирует версию файла.
+
+        Снимает признак текущей версии и переводит версию в статус
+        `FileVersionStatus.ARCHIVED`.
+
+        Returns:
+            None.
+        """
 
         self.is_current = False
         self.status = FileVersionStatus.ARCHIVED
 
     def mark_deleted(self) -> None:
-        """Помечает версию как удалённую."""
+        """Помечает версию как удалённую.
+
+        Снимает признак текущей версии и переводит версию в статус
+        `FileVersionStatus.DELETED`.
+
+        Returns:
+            None.
+        """
 
         self.is_current = False
         self.status = FileVersionStatus.DELETED
 
     def __repr__(self) -> str:
+        """Возвращает строковое представление версии файла.
+
+        Returns:
+            Строковое представление `FileVersion` с основными полями.
+        """
+
         return (
             f"<FileVersion("
             f"id={self.id}, "
@@ -990,9 +1227,27 @@ class TrashItem(Base, UUIDPrimaryKeyMixin):
     """Элемент корзины.
 
     Хранит информацию об удалённых файлах и папках, которые могут быть
-    восстановлены до окончательного удаления.
+    восстановлены до окончательного удаления. Элемент корзины сохраняет
+    исходное расположение узла, пользователя, выполнившего удаление, срок
+    хранения и статус восстановления или окончательного удаления.
 
-    Таблица:
+    Attributes:
+        node_id: Удалённый узел файловой системы.
+        owner_id: Владелец удалённого узла.
+        deleted_by: Пользователь, который переместил узел в корзину.
+        original_parent_id: Исходная родительская папка до удаления.
+        original_path: Исходный логический путь до удаления.
+        status: Статус элемента корзины.
+        deleted_at: Дата и время перемещения узла в корзину.
+        expires_at: Дата, после которой элемент может быть окончательно удалён.
+        restore_available: Признак возможности восстановления.
+        purged_at: Дата и время окончательного удаления.
+        node: Удалённый узел файловой системы.
+        owner: Владелец удалённого узла.
+        deleter: Пользователь, который переместил узел в корзину.
+        original_parent: Исходная родительская папка до удаления.
+
+    Table:
         trash_items
     """
 
@@ -1124,25 +1379,45 @@ class TrashItem(Base, UUIDPrimaryKeyMixin):
 
     @property
     def is_in_trash(self) -> bool:
-        """Возвращает True, если элемент находится в корзине."""
+        """Проверяет, находится ли элемент в корзине.
+
+        Returns:
+            `True`, если статус элемента равен `TrashItemStatus.IN_TRASH`,
+            иначе `False`.
+        """
 
         return self.status == TrashItemStatus.IN_TRASH
 
     @property
     def is_restored(self) -> bool:
-        """Возвращает True, если элемент был восстановлен."""
+        """Проверяет, был ли элемент восстановлен.
+
+        Returns:
+            `True`, если статус элемента равен `TrashItemStatus.RESTORED`,
+            иначе `False`.
+        """
 
         return self.status == TrashItemStatus.RESTORED
 
     @property
     def is_purged(self) -> bool:
-        """Возвращает True, если элемент окончательно удалён."""
+        """Проверяет, был ли элемент окончательно удалён.
+
+        Returns:
+            `True`, если статус элемента равен `TrashItemStatus.PURGED`
+            или задано время окончательного удаления, иначе `False`.
+        """
 
         return self.status == TrashItemStatus.PURGED or self.purged_at is not None
 
     @property
     def can_restore(self) -> bool:
-        """Возвращает True, если элемент можно восстановить."""
+        """Проверяет, можно ли восстановить элемент корзины.
+
+        Returns:
+            `True`, если элемент находится в корзине, восстановление разрешено
+            и окончательное удаление ещё не выполнено, иначе `False`.
+        """
 
         return (
             self.status == TrashItemStatus.IN_TRASH
@@ -1155,7 +1430,13 @@ class TrashItem(Base, UUIDPrimaryKeyMixin):
     # -------------------------------------------------------------------------
 
     def restore(self) -> None:
-        """Помечает элемент корзины как восстановленный."""
+        """Помечает элемент корзины как восстановленный.
+
+        Устанавливает статус `RESTORED` и запрещает повторное восстановление.
+
+        Returns:
+            None.
+        """
 
         self.status = TrashItemStatus.RESTORED
         self.restore_available = False
@@ -1163,9 +1444,16 @@ class TrashItem(Base, UUIDPrimaryKeyMixin):
     def purge(self, purged_at: datetime | None = None) -> None:
         """Помечает элемент корзины как окончательно удалённый.
 
+        Устанавливает статус `PURGED`, запрещает восстановление и сохраняет
+        дату окончательного удаления. Если дата не передана, используется
+        текущее UTC-время.
+
         Args:
             purged_at: Дата и время окончательного удаления. Если не передано,
                 используется текущее UTC-время.
+
+        Returns:
+            None.
         """
 
         self.status = TrashItemStatus.PURGED
@@ -1173,7 +1461,11 @@ class TrashItem(Base, UUIDPrimaryKeyMixin):
         self.purged_at = purged_at or datetime.now(UTC)
 
     def disable_restore(self) -> None:
-        """Запрещает восстановление элемента."""
+        """Запрещает восстановление элемента.
+
+        Returns:
+            None.
+        """
 
         self.restore_available = False
 
@@ -1184,12 +1476,19 @@ class TrashItem(Base, UUIDPrimaryKeyMixin):
             moment: Дата и время для проверки срока хранения.
 
         Returns:
-            True, если срок хранения истёк к указанному моменту.
+            `True`, если срок хранения истёк к указанному моменту,
+            иначе `False`.
         """
 
         return self.expires_at is not None and self.expires_at <= moment
 
     def __repr__(self) -> str:
+        """Возвращает строковое представление элемента корзины.
+
+        Returns:
+            Строковое представление `TrashItem` с основными полями.
+        """
+
         return (
             f"<TrashItem("
             f"id={self.id}, "

@@ -1,7 +1,19 @@
+"""Создание и настройка FastAPI-приложения LocalCloud.
+
+Модуль содержит фабрику приложения, обработчик жизненного цикла startup/shutdown
+и корневой эндпоинт для базовой проверки доступности backend-приложения.
+
+При создании приложения подключаются middleware, обработчики исключений
+и корневой маршрутизатор API.
+
+Attributes:
+    app: Готовый экземпляр FastAPI-приложения LocalCloud.
+"""
+
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
+from typing import AsyncGenerator
 
 from fastapi import FastAPI
 
@@ -14,8 +26,24 @@ from schemas.common import StatusResponse
 
 
 @asynccontextmanager
-async def app_lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Управляет startup/shutdown жизненным циклом приложения."""
+async def app_lifespan(app: FastAPI) -> AsyncGenerator[None]:
+    """Управляет startup/shutdown жизненным циклом приложения.
+
+    Выполняет startup-инициализацию backend-приложения перед началом обработки
+    запросов и гарантирует корректное освобождение ресурсов при завершении
+    работы приложения.
+
+    Args:
+        app: Экземпляр FastAPI-приложения, для которого выполняется жизненный
+            цикл.
+
+    Yields:
+        Управление приложению на время его работы.
+
+    Raises:
+        Exception: Если ошибка возникла во время startup или shutdown и не была
+            обработана внутри соответствующих функций жизненного цикла.
+    """
 
     await startup_backend(app)
     try:
@@ -25,7 +53,16 @@ async def app_lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
-    """Создаёт и настраивает FastAPI-приложение LocalCloud."""
+    """Создаёт и настраивает FastAPI-приложение LocalCloud.
+
+    Загружает настройки приложения, создаёт экземпляр FastAPI, подключает
+    middleware, регистрирует обработчики исключений и добавляет основной
+    маршрутизатор API. Также регистрирует корневой эндпоинт `/` для проверки
+    доступности backend-приложения.
+
+    Returns:
+        Настроенный экземпляр FastAPI-приложения LocalCloud.
+    """
 
     settings = get_settings()
 
@@ -43,7 +80,14 @@ def create_app() -> FastAPI:
 
     @application.get("/", response_model=StatusResponse, tags=["root"])
     async def root() -> StatusResponse:
-        """Возвращает базовую информацию о backend-приложении."""
+        """Возвращает базовую информацию о backend-приложении.
+
+        Получает актуальные настройки приложения и возвращает статусный ответ,
+        подтверждающий, что backend запущен и доступен.
+
+        Returns:
+            Статусный ответ с сообщением о работе backend-приложения.
+        """
 
         app_settings = get_app_settings(application)
         return StatusResponse(

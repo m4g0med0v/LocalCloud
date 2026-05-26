@@ -1,3 +1,22 @@
+"""Настройка корневого маршрутизатора API.
+
+Модуль создаёт основной маршрутизатор API приложения, подключает маршрутизаторы
+версии v1 и определяет итоговый префикс подключения с учётом настроек
+`api_prefix` и `api_v1_prefix`.
+
+Если префикс API v1 уже содержит общий API-префикс, дополнительный префикс
+при подключении не используется. Это предотвращает дублирование пути.
+
+Attributes:
+    settings: Настройки приложения.
+    api_router: Корневой маршрутизатор API.
+    v1_router: Маршрутизатор API версии 1.
+    api_v1_prefix: Префикс API версии 1 из настроек приложения.
+    api_prefix: Общий API-префикс из настроек приложения.
+    include_prefix: Префикс, используемый при подключении маршрутизатора v1
+        к корневому маршрутизатору.
+"""
+
 from __future__ import annotations
 
 from fastapi import APIRouter
@@ -21,7 +40,10 @@ from core.config import get_settings
 
 settings = get_settings()
 
+# Корневой маршрутизатор API приложения.
 api_router = APIRouter()
+
+# Маршрутизатор API v1 с префиксом из настроек приложения.
 v1_router = APIRouter(prefix=settings.app.api_v1_prefix)
 
 v1_router.include_router(health_router)

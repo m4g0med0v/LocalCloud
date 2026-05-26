@@ -785,19 +785,28 @@ class NodesService:
                 ошибка сервиса.
         """
 
+        async def move_to_trash(uow: Any) -> FileSystemNode:
+            trash_item = await uow.trash.create_trash_item(
+                node_id=node_id,
+                deleted_by=actor_id,
+                soft_delete_node=True,
+                recursive_soft_delete=recursive,
+                flush=True,
+                refresh=True,
+            )
+            node = trash_item.node
+            if node is None:
+                node = await uow.nodes.get_required_by_id(node_id)
+            await uow.nodes.refresh(node)
+            return node
+
         return await self._mutate_node(
             node_id=node_id,
             actor_id=actor_id,
             access_action=PermissionAction.DELETE,
             audit_action=AuditAction.NODE_DELETED,
             message="Filesystem node moved to trash.",
-            mutate=lambda uow: uow.nodes.soft_delete_node(
-                node_id=node_id,
-                deleted_by=actor_id,
-                recursive=recursive,
-                flush=True,
-                refresh=True,
-            ),
+            mutate=move_to_trash,
             operation="delete_node",
         )
 

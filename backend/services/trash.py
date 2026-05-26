@@ -376,7 +376,7 @@ class TrashService:
         try:
             sort_by = _validate_sort_field(params.sort_by)
             total = 0
-            items: list[TrashItem] = []
+            snapshots: list[dict[str, Any]] = []
             async with self.uow_factory() as uow:
                 total = await uow.trash.count_user_trash_filtered(
                     owner_id=owner_id,
@@ -402,10 +402,11 @@ class TrashService:
                     offset=params.offset,
                     limit=params.limit,
                 )
+                snapshots = [_trash_item_snapshot(item) for item in items]
 
             dto_items = [
-                TrashItemListItem.model_validate(_trash_item_snapshot(item))
-                for item in items
+                TrashItemListItem.model_validate(snapshot)
+                for snapshot in snapshots
             ]
             return PageResponse(
                 items=dto_items,
@@ -512,6 +513,9 @@ class TrashService:
                 node = restored.node
                 if node is not None and target_parent_id != node.parent_id:
                     node.parent_id = target_parent_id
+                    await uow.nodes.refresh(node)
+                elif node is not None:
+                    await uow.nodes.refresh(node)
                 trash_snapshot = _trash_item_snapshot(restored)
                 node_snapshot = _node_snapshot(restored.node)
                 await uow.commit()
@@ -813,6 +817,10 @@ class TrashService:
                 trash_item.status = TrashItemStatus.PURGED
                 trash_item.purged_at = datetime.now(UTC)
                 trash_item.restore_available = False
+                await uow.links.delete_links_by_node(
+                    plan.node_id,
+                    flush=True,
+                )
                 await uow.trash.mark_purged(
                     trash_item_id=trash_item.id,
                     purged_at=trash_item.purged_at,
@@ -901,6 +909,10 @@ class TrashService:
                     trash_item.status = TrashItemStatus.PURGED
                     trash_item.purged_at = datetime.now(UTC)
                     trash_item.restore_available = False
+                    await uow.links.delete_links_by_node(
+                        plan.node_id,
+                        flush=True,
+                    )
                     await uow.trash.mark_purged(
                         trash_item_id=trash_item.id,
                         purged_at=trash_item.purged_at,

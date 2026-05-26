@@ -1,3 +1,19 @@
+"""Эндпоинты для обработки заявок на регистрацию.
+
+Модуль содержит маршрутизатор FastAPI для создания, просмотра и обработки
+заявок на регистрацию пользователей. Предоставляет публичный эндпоинт для
+отправки новой заявки, административные эндпоинты для просмотра, одобрения
+и отклонения заявок, а также эндпоинт для отмены заявки.
+
+Создание и отмена заявки могут выполняться без обязательной авторизации.
+Просмотр списка заявок, просмотр отдельной заявки, одобрение и отклонение
+доступны только текущему администратору.
+
+Attributes:
+    router: Маршрутизатор FastAPI с префиксом `/registration` и тегом
+        `registration`.
+"""
+
 from __future__ import annotations
 
 from uuid import UUID
@@ -19,6 +35,7 @@ from schemas.registration import (
 from security import CurrentAdminUserDependency, OptionalCurrentUserDependency
 from services import RegistrationService
 
+# Маршрутизатор эндпоинтов для работы с заявками на регистрацию.
 router = APIRouter(prefix="/registration", tags=["registration"])
 
 
@@ -29,9 +46,27 @@ router = APIRouter(prefix="/registration", tags=["registration"])
 )
 async def create_registration_request(
     data: RegistrationRequestCreate,
-    registration_service: RegistrationService = Depends(get_registration_service_dependency),
+    registration_service: RegistrationService = Depends(
+        get_registration_service_dependency
+    ),
 ) -> RegistrationRequestRead:
-    """Создаёт новую заявку на регистрацию."""
+    """Создаёт новую заявку на регистрацию.
+
+    Принимает данные будущего пользователя и передаёт их в сервисный слой
+    для создания заявки на регистрацию. Эндпоинт не требует обязательной
+    пользовательской авторизации.
+
+    Args:
+        data: Данные для создания заявки на регистрацию.
+        registration_service: Сервис регистрации, выполняющий создание заявки.
+
+    Returns:
+        Данные созданной заявки на регистрацию.
+
+    Raises:
+        HTTPException: Если данные заявки некорректны, заявка с такими
+            параметрами уже существует или создание заявки запрещено.
+    """
 
     return await registration_service.submit_request(data)
 
@@ -44,9 +79,29 @@ async def create_registration_request(
 async def list_registration_requests(
     _: CurrentAdminUserDependency,
     params: RegistrationQueryParams = Depends(),
-    registration_service: RegistrationService = Depends(get_registration_service_dependency),
+    registration_service: RegistrationService = Depends(
+        get_registration_service_dependency
+    ),
 ) -> PageResponse[RegistrationRequestListItem]:
-    """Возвращает список заявок на регистрацию для администратора."""
+    """Возвращает список заявок на регистрацию.
+
+    Получает страницу заявок на регистрацию с учётом параметров фильтрации,
+    сортировки и пагинации. Эндпоинт доступен только текущему администратору.
+
+    Args:
+        _: Текущий авторизованный администратор. Используется как зависимость
+            безопасности и не применяется внутри функции напрямую.
+        params: Параметры запроса для фильтрации, сортировки и пагинации заявок.
+        registration_service: Сервис регистрации, выполняющий получение списка
+            заявок.
+
+    Returns:
+        Страница заявок на регистрацию с метаданными пагинации.
+
+    Raises:
+        HTTPException: Если пользователь не аутентифицирован, не является
+            администратором, параметры запроса некорректны или доступ запрещён.
+    """
 
     return await registration_service.list_requests(params)
 
@@ -59,9 +114,28 @@ async def list_registration_requests(
 async def get_registration_request(
     _: CurrentAdminUserDependency,
     request_id: UUID = Path(...),
-    registration_service: RegistrationService = Depends(get_registration_service_dependency),
+    registration_service: RegistrationService = Depends(
+        get_registration_service_dependency
+    ),
 ) -> RegistrationRequestRead:
-    """Возвращает заявку на регистрацию по идентификатору."""
+    """Возвращает заявку на регистрацию по идентификатору.
+
+    Получает подробные данные одной заявки на регистрацию. Эндпоинт доступен
+    только текущему администратору.
+
+    Args:
+        _: Текущий авторизованный администратор. Используется как зависимость
+            безопасности и не применяется внутри функции напрямую.
+        request_id: Уникальный идентификатор заявки на регистрацию.
+        registration_service: Сервис регистрации, выполняющий получение заявки.
+
+    Returns:
+        Подробные данные заявки на регистрацию.
+
+    Raises:
+        HTTPException: Если пользователь не аутентифицирован, не является
+            администратором, заявка не найдена или доступ запрещён.
+    """
 
     return await registration_service.get_request(request_id)
 
@@ -75,9 +149,29 @@ async def approve_registration_request(
     data: RegistrationApproveRequest,
     admin_user: CurrentAdminUserDependency,
     request_id: UUID = Path(...),
-    registration_service: RegistrationService = Depends(get_registration_service_dependency),
+    registration_service: RegistrationService = Depends(
+        get_registration_service_dependency
+    ),
 ) -> RegistrationDecisionResponse:
-    """Одобряет заявку на регистрацию."""
+    """Одобряет заявку на регистрацию.
+
+    Передаёт решение об одобрении заявки в сервисный слой и фиксирует текущего
+    администратора как пользователя, рассмотревшего заявку.
+
+    Args:
+        data: Данные для одобрения заявки на регистрацию.
+        admin_user: Текущий авторизованный администратор, принимающий решение.
+        request_id: Уникальный идентификатор одобряемой заявки.
+        registration_service: Сервис регистрации, выполняющий одобрение заявки.
+
+    Returns:
+        Результат принятого решения по заявке.
+
+    Raises:
+        HTTPException: Если администратор не аутентифицирован, заявка не найдена,
+            уже обработана, не может быть одобрена или параметры решения
+            некорректны.
+    """
 
     return await registration_service.approve_request(
         request_id,
@@ -95,9 +189,29 @@ async def reject_registration_request(
     data: RegistrationRejectRequest,
     admin_user: CurrentAdminUserDependency,
     request_id: UUID = Path(...),
-    registration_service: RegistrationService = Depends(get_registration_service_dependency),
+    registration_service: RegistrationService = Depends(
+        get_registration_service_dependency
+    ),
 ) -> RegistrationDecisionResponse:
-    """Отклоняет заявку на регистрацию."""
+    """Отклоняет заявку на регистрацию.
+
+    Передаёт решение об отклонении заявки в сервисный слой и фиксирует текущего
+    администратора как пользователя, рассмотревшего заявку.
+
+    Args:
+        data: Данные для отклонения заявки на регистрацию.
+        admin_user: Текущий авторизованный администратор, принимающий решение.
+        request_id: Уникальный идентификатор отклоняемой заявки.
+        registration_service: Сервис регистрации, выполняющий отклонение заявки.
+
+    Returns:
+        Результат принятого решения по заявке.
+
+    Raises:
+        HTTPException: Если администратор не аутентифицирован, заявка не найдена,
+            уже обработана, не может быть отклонена или параметры решения
+            некорректны.
+    """
 
     return await registration_service.reject_request(
         request_id,
@@ -115,9 +229,31 @@ async def cancel_registration_request(
     data: RegistrationCancelRequest,
     request_id: UUID = Path(...),
     current_user: OptionalCurrentUserDependency = None,
-    registration_service: RegistrationService = Depends(get_registration_service_dependency),
+    registration_service: RegistrationService = Depends(
+        get_registration_service_dependency
+    ),
 ) -> RegistrationDecisionResponse:
-    """Отменяет заявку на регистрацию."""
+    """Отменяет заявку на регистрацию.
+
+    Передаёт запрос на отмену заявки в сервисный слой. Авторизация пользователя
+    является необязательной: если пользователь присутствует, зависимость может
+    использоваться для контекста безопасности, но внутри функции напрямую
+    не применяется.
+
+    Args:
+        data: Данные для отмены заявки на регистрацию.
+        request_id: Уникальный идентификатор отменяемой заявки.
+        current_user: Текущий пользователь, если он был определён. Может быть
+            `None`, если запрос выполняется без авторизации.
+        registration_service: Сервис регистрации, выполняющий отмену заявки.
+
+    Returns:
+        Результат отмены заявки на регистрацию.
+
+    Raises:
+        HTTPException: Если заявка не найдена, уже обработана, не может быть
+            отменена или параметры отмены некорректны.
+    """
 
     _ = current_user
     return await registration_service.cancel_request(request_id, data)

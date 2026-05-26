@@ -1,3 +1,18 @@
+"""ORM-модель разрешений на узлы файловой системы.
+
+Модуль содержит SQLAlchemy-модель `NodePermission`, которая описывает
+пользовательские разрешения на файлы и папки LocalCloud. Разрешение связывает
+пользователя с конкретным узлом файловой системы и определяет доступные
+действия: чтение, скачивание, запись, удаление и передачу доступа.
+
+Модель поддерживает срок действия разрешения, отзыв доступа, восстановление
+отозванного разрешения, фабричные методы для типовых наборов прав и проверку
+доступности разрешения на заданный момент времени.
+
+Attributes:
+    NodePermission: ORM-модель разрешения на узел файловой системы.
+"""
+
 from __future__ import annotations
 
 import uuid
@@ -30,7 +45,8 @@ class NodePermission(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
     """Разрешение на узел файловой системы.
 
     Представляет разрешение, предоставленное пользователю на конкретный файл
-    или папку.
+    или папку. Разрешение хранит общий уровень доступа, отдельные boolean-флаги
+    доступных действий, срок действия и сведения об отзыве.
 
     Разрешения могут включать:
         - чтение метаданных;
@@ -40,7 +56,30 @@ class NodePermission(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
         - удаление узла;
         - дальнейшую передачу доступа.
 
-    Таблица:
+    Attributes:
+        node_id: Узел файловой системы, для которого выданы разрешения.
+        user_id: Пользователь, получающий разрешение доступа.
+        subject_type: Тип субъекта доступа. Для этой таблицы обычно
+            используется `PermissionSubjectType.USER`.
+        permission_level: Обобщённый уровень доступа.
+        granted_by: Пользователь, предоставивший разрешение.
+        can_read: Признак разрешения просмотра метаданных узла и содержимого
+            папки.
+        can_download: Признак разрешения скачивания файла или архива папки.
+        can_write: Признак разрешения изменения, переименования или загрузки
+            в узел.
+        can_delete: Признак разрешения перемещения узла в корзину или
+            окончательного удаления.
+        can_share: Признак разрешения выдачи разрешений и создания публичных
+            ссылок.
+        expires_at: Дата и время истечения срока действия разрешения.
+        revoked_at: Дата и время отзыва разрешения.
+        revoke_reason: Причина отзыва разрешения.
+        node: Узел файловой системы, для которого выдано разрешение.
+        user: Пользователь, получающий разрешение.
+        grantor: Пользователь, предоставивший разрешение.
+
+    Table:
         node_permissions
     """
 
@@ -236,6 +275,10 @@ class NodePermission(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
     ) -> NodePermission:
         """Создаёт разрешение только на чтение.
 
+        Формирует разрешение с уровнем `PermissionLevel.READ`, при котором
+        пользователю доступно только чтение метаданных узла и просмотр
+        содержимого папки.
+
         Args:
             node_id: Идентификатор узла файловой системы.
             user_id: Идентификатор пользователя, получающего доступ.
@@ -269,6 +312,9 @@ class NodePermission(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
         expires_at: datetime | None = None,
     ) -> NodePermission:
         """Создаёт разрешение на чтение и скачивание.
+
+        Формирует разрешение с уровнем `PermissionLevel.DOWNLOAD`, при котором
+        пользователю доступно чтение и скачивание файла или архива папки.
 
         Args:
             node_id: Идентификатор узла файловой системы.
@@ -304,6 +350,9 @@ class NodePermission(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
     ) -> NodePermission:
         """Создаёт разрешение на чтение, скачивание и изменение.
 
+        Формирует разрешение с уровнем `PermissionLevel.WRITE`, при котором
+        пользователю доступно чтение, скачивание и изменение узла.
+
         Args:
             node_id: Идентификатор узла файловой системы.
             user_id: Идентификатор пользователя, получающего доступ.
@@ -338,8 +387,9 @@ class NodePermission(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
     ) -> NodePermission:
         """Создаёт расширенное разрешение, близкое к правам владельца.
 
-        Фактический владелец всё равно определяется через
-        ``FileSystemNode.owner_id``.
+        Формирует разрешение с уровнем `PermissionLevel.OWNER`, при котором
+        пользователю доступны все действия. Фактический владелец ресурса
+        всё равно определяется через `FileSystemNode.owner_id`.
 
         Args:
             node_id: Идентификатор узла файловой системы.
@@ -371,13 +421,21 @@ class NodePermission(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
 
     @property
     def is_revoked(self) -> bool:
-        """Возвращает True, если разрешение было явно отозвано."""
+        """Проверяет, было ли разрешение явно отозвано.
+
+        Returns:
+            `True`, если у разрешения задано время отзыва, иначе `False`.
+        """
 
         return self.revoked_at is not None
 
     @property
     def has_any_permission(self) -> bool:
-        """Возвращает True, если включён хотя бы один флаг разрешения."""
+        """Проверяет наличие хотя бы одного флага разрешения.
+
+        Returns:
+            `True`, если включён хотя бы один флаг разрешения, иначе `False`.
+        """
 
         return any(
             (
@@ -391,7 +449,12 @@ class NodePermission(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
 
     @property
     def is_read_only(self) -> bool:
-        """Возвращает True, если разрешение позволяет только чтение."""
+        """Проверяет, позволяет ли разрешение только чтение.
+
+        Returns:
+            `True`, если разрешено только чтение и остальные действия
+            запрещены, иначе `False`.
+        """
 
         return (
             self.can_read
@@ -403,7 +466,12 @@ class NodePermission(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
 
     @property
     def is_owner_like(self) -> bool:
-        """Возвращает True, если разрешение включает все доступные действия."""
+        """Проверяет, включает ли разрешение все доступные действия.
+
+        Returns:
+            `True`, если включены чтение, скачивание, запись, удаление
+            и передача доступа, иначе `False`.
+        """
 
         return all(
             (
@@ -426,7 +494,8 @@ class NodePermission(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
             moment: Дата и время для проверки срока действия.
 
         Returns:
-            True, если срок действия разрешения истёк к указанному моменту.
+            `True`, если срок действия разрешения истёк к указанному моменту,
+            иначе `False`.
         """
 
         return self.expires_at is not None and self.expires_at <= moment
@@ -434,16 +503,14 @@ class NodePermission(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
     def is_active_at(self, moment: datetime) -> bool:
         """Проверяет, активно ли разрешение в указанный момент.
 
-        Разрешение активно, когда:
-            - оно не отозвано;
-            - срок действия не истёк;
-            - включено хотя бы одно действие.
+        Разрешение активно, когда оно не отозвано, срок действия не истёк
+        и включено хотя бы одно действие.
 
         Args:
             moment: Дата и время для проверки активности разрешения.
 
         Returns:
-            True, если разрешение может использоваться.
+            `True`, если разрешение может использоваться, иначе `False`.
         """
 
         return (
@@ -459,7 +526,7 @@ class NodePermission(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
             moment: Дата и время для проверки доступа.
 
         Returns:
-            True, если чтение разрешено.
+            `True`, если разрешение активно и чтение разрешено, иначе `False`.
         """
 
         return self.is_active_at(moment) and self.can_read
@@ -471,7 +538,8 @@ class NodePermission(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
             moment: Дата и время для проверки доступа.
 
         Returns:
-            True, если скачивание разрешено.
+            `True`, если разрешение активно и скачивание разрешено,
+            иначе `False`.
         """
 
         return self.is_active_at(moment) and self.can_download
@@ -483,7 +551,7 @@ class NodePermission(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
             moment: Дата и время для проверки доступа.
 
         Returns:
-            True, если запись разрешена.
+            `True`, если разрешение активно и запись разрешена, иначе `False`.
         """
 
         return self.is_active_at(moment) and self.can_write
@@ -495,7 +563,7 @@ class NodePermission(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
             moment: Дата и время для проверки доступа.
 
         Returns:
-            True, если удаление разрешено.
+            `True`, если разрешение активно и удаление разрешено, иначе `False`.
         """
 
         return self.is_active_at(moment) and self.can_delete
@@ -507,7 +575,8 @@ class NodePermission(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
             moment: Дата и время для проверки доступа.
 
         Returns:
-            True, если передача доступа разрешена.
+            `True`, если разрешение активно и передача доступа разрешена,
+            иначе `False`.
         """
 
         return self.is_active_at(moment) and self.can_share
@@ -523,17 +592,31 @@ class NodePermission(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
     ) -> None:
         """Отзывает разрешение.
 
+        Устанавливает дату отзыва разрешения и сохраняет причину отзыва.
+        Если дата отзыва не передана, используется текущее UTC-время.
+
         Args:
             reason: Причина отзыва разрешения.
             revoked_at: Дата и время отзыва. Если не передано, используется
                 текущее UTC-время.
+
+        Returns:
+            None.
         """
 
         self.revoked_at = revoked_at or datetime.now(UTC)
         self.revoke_reason = reason
 
     def restore(self) -> None:
-        """Восстанавливает ранее отозванное разрешение."""
+        """Восстанавливает ранее отозванное разрешение.
+
+        Очищает дату и причину отзыва, снова делая разрешение потенциально
+        активным при условии, что срок действия не истёк и есть хотя бы один
+        включённый флаг доступа.
+
+        Returns:
+            None.
+        """
 
         self.revoked_at = None
         self.revoke_reason = None
@@ -551,8 +634,8 @@ class NodePermission(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
     ) -> None:
         """Обновляет набор разрешений.
 
-        Аргументы со значением ``None`` для флагов не изменяют соответствующий
-        флаг. ``expires_at`` обновляется всегда, включая установку в ``None``.
+        Аргументы со значением `None` для флагов не изменяют соответствующий
+        флаг. `expires_at` обновляется всегда, включая установку в `None`.
 
         Args:
             can_read: Новое значение флага чтения.
@@ -562,6 +645,9 @@ class NodePermission(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
             can_share: Новое значение флага передачи доступа.
             permission_level: Новый обобщённый уровень доступа.
             expires_at: Новая дата истечения срока действия разрешения.
+
+        Returns:
+            None.
         """
 
         if can_read is not None:
@@ -585,7 +671,14 @@ class NodePermission(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
         self.expires_at = expires_at
 
     def set_read_only(self) -> None:
-        """Переводит разрешение в режим только чтения."""
+        """Переводит разрешение в режим только чтения.
+
+        Устанавливает уровень доступа `READ`, включает чтение и отключает
+        остальные действия.
+
+        Returns:
+            None.
+        """
 
         self.permission_level = PermissionLevel.READ
         self.can_read = True
@@ -595,7 +688,14 @@ class NodePermission(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
         self.can_share = False
 
     def set_downloadable(self) -> None:
-        """Разрешает чтение и скачивание."""
+        """Разрешает чтение и скачивание.
+
+        Устанавливает уровень доступа `DOWNLOAD`, включает чтение и скачивание,
+        отключая запись, удаление и передачу доступа.
+
+        Returns:
+            None.
+        """
 
         self.permission_level = PermissionLevel.DOWNLOAD
         self.can_read = True
@@ -605,7 +705,14 @@ class NodePermission(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
         self.can_share = False
 
     def set_writable(self) -> None:
-        """Разрешает чтение, скачивание и изменение."""
+        """Разрешает чтение, скачивание и изменение.
+
+        Устанавливает уровень доступа `WRITE`, включает чтение, скачивание
+        и запись, отключая удаление и передачу доступа.
+
+        Returns:
+            None.
+        """
 
         self.permission_level = PermissionLevel.WRITE
         self.can_read = True
@@ -615,7 +722,13 @@ class NodePermission(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
         self.can_share = False
 
     def set_owner_like(self) -> None:
-        """Разрешает все действия."""
+        """Разрешает все действия.
+
+        Устанавливает уровень доступа `OWNER` и включает все флаги доступа.
+
+        Returns:
+            None.
+        """
 
         self.permission_level = PermissionLevel.OWNER
         self.can_read = True
@@ -625,9 +738,14 @@ class NodePermission(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
         self.can_share = True
 
     def sync_permission_level_from_flags(self) -> None:
-        """Синхронизирует ``permission_level`` с текущими boolean-флагами.
+        """Синхронизирует `permission_level` с текущими boolean-флагами.
 
         Используется, если разрешения изменялись напрямую через флаги.
+        Метод подбирает наиболее близкий обобщённый уровень доступа на основе
+        включённых действий.
+
+        Returns:
+            None.
         """
 
         if self.is_owner_like:
@@ -670,6 +788,13 @@ class NodePermission(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
         self.permission_level = PermissionLevel.READ
 
     def __repr__(self) -> str:
+        """Возвращает строковое представление разрешения.
+
+        Returns:
+            Строковое представление `NodePermission` с основными полями
+            и флагами доступа.
+        """
+
         return (
             f"<NodePermission("
             f"id={self.id}, "

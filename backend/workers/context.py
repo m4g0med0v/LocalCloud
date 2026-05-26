@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from core.config import Settings, get_settings
 from database import UnitOfWorkFactory, create_unit_of_work_factory
+from services.access import AccessService, get_access_service
 from services.audit import AuditService, get_audit_service
 from services.downloads import DownloadsService, get_downloads_service
 from services.health import HealthService, get_health_service
@@ -24,7 +25,9 @@ from workers.constants import WorkerConstants
 class WorkerServices:
     """Контейнер сервисов worker-процесса."""
 
+    access: AccessService
     audit: AuditService
+
     tasks: TasksService
     trash: TrashService
     uploads: UploadsService
@@ -66,6 +69,7 @@ def build_worker_context(worker_id: str | None = None) -> WorkerContext:
     uow_factory = create_unit_of_work_factory()
     storage_service = get_storage_service(settings=settings.storage)
 
+    access_service = get_access_service(uow_factory=uow_factory)
     audit_service = get_audit_service(uow_factory=uow_factory)
     tasks_service = get_tasks_service(
         uow_factory=uow_factory, audit_service=audit_service
@@ -104,6 +108,7 @@ def build_worker_context(worker_id: str | None = None) -> WorkerContext:
     )
 
     services = WorkerServices(
+        access=access_service,
         audit=audit_service,
         tasks=tasks_service,
         trash=trash_service,

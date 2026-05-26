@@ -262,13 +262,13 @@ class DownloadsService:
                     refresh=True,
                 )
                 archive_name = _archive_filename(data.archive_name or node.name)
-                task.payload = {
+                payload = {
                     "folder_id": str(folder.node_id),
                     "include_deleted": data.include_deleted,
                     "archive_name": archive_name,
                     "password": data.password,
                 }
-                task.result_data = {
+                result_data = {
                     "folder_id": str(folder.node_id),
                     "archive_name": archive_name,
                     "storage_bucket": self.storage_service.default_archives_bucket,
@@ -280,6 +280,13 @@ class DownloadsService:
                     "content_type": ZIP_MIME_TYPE,
                     "password_protected": data.password is not None,
                 }
+                task = await uow.tasks.update(
+                    task,
+                    {"payload": payload, "result_data": result_data},
+                    flush=True,
+                    refresh=True,
+                    allowed_fields={"payload", "result_data"},
+                )
                 task_snapshot = _task_snapshot(task)
                 folder_snapshot = _folder_snapshot(folder)
                 await uow.commit()

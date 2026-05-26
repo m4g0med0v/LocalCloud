@@ -686,7 +686,7 @@ class UploadsService:
                 )
                 snapshot = _session_snapshot(upload_session)
                 await uow.commit()
-                result = UploadProgressRead.model_validate(snapshot)
+                result = _upload_progress_read(snapshot)
             if result is None:
                 raise _empty_result_error(operation)
             return result
@@ -1010,9 +1010,7 @@ class UploadsService:
                     user_id=user_id,
                     operation=operation,
                 )
-                result = UploadProgressRead.model_validate(
-                    _session_snapshot(upload_session)
-                )
+                result = _upload_progress_read(_session_snapshot(upload_session))
             if result is None:
                 raise _empty_result_error(operation)
             return result
@@ -1805,6 +1803,29 @@ def _session_snapshot(upload_session: UploadSession) -> dict[str, Any]:
         "user_agent": upload_session.user_agent,
         "created_at": upload_session.created_at,
     }
+
+
+def _upload_progress_read(snapshot: Mapping[str, Any]) -> UploadProgressRead:
+    """Преобразует снимок upload-сессии в DTO прогресса."""
+
+    payload = dict(snapshot)
+    payload["upload_session_id"] = snapshot.get("id")
+    payload["progress_percent"] = _calculate_progress_percent(snapshot)
+    return UploadProgressRead.model_validate(payload)
+
+
+def _calculate_progress_percent(snapshot: Mapping[str, Any]) -> int:
+    """Вычисляет процент прогресса upload-сессии по снимку."""
+
+    file_size_bytes = snapshot.get("file_size_bytes")
+    uploaded_bytes = snapshot.get("uploaded_bytes")
+
+    if not isinstance(file_size_bytes, int) or file_size_bytes <= 0:
+        return 0
+    if not isinstance(uploaded_bytes, int) or uploaded_bytes <= 0:
+        return 0
+
+    return max(0, min(100, int((uploaded_bytes * 100) / file_size_bytes)))
 
 
 def _audit_upload(snapshot: Mapping[str, Any]) -> dict[str, Any]:

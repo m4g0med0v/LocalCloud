@@ -318,7 +318,7 @@ class PublicLinksService:
         offset = max(0, params.offset)
         sort_by = _normalize_sort_by(params.sort_by)
         direction: Literal["asc", "desc"] = "desc" if params.sort_desc else "asc"
-        items: list[PublicLink] = []
+        snapshots: list[dict[str, Any]] = []
         total = 0
 
         try:
@@ -365,11 +365,12 @@ class PublicLinksService:
                         created_by=actor_id,
                         active_only=bool(params.is_active),
                     )
+                snapshots = [_link_snapshot(item) for item in items]
 
             dto_items = [
-                PublicLinkListItem.model_validate(_link_snapshot(item))
-                for item in items
-                if _include_by_password_filter(item, params.has_password)
+                PublicLinkListItem.model_validate(snapshot)
+                for snapshot in snapshots
+                if _include_snapshot_by_password_filter(snapshot, params.has_password)
             ]
             return PageResponse(
                 items=dto_items,
@@ -1146,6 +1147,17 @@ def _link_snapshot(link: PublicLink) -> dict[str, Any]:
         "is_revoked": link.is_revoked,
         "node": _node_list_item_payload(node) if node is not None else None,
     }
+
+
+def _include_snapshot_by_password_filter(
+    snapshot: Mapping[str, Any],
+    has_password: bool | None,
+) -> bool:
+    """Применяет фильтр по признаку парольной защиты к снимку ссылки."""
+
+    if has_password is None:
+        return True
+    return bool(snapshot.get("has_password")) is has_password
 
 
 def _node_list_item_payload(node: FileSystemNode) -> dict[str, Any]:

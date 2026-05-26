@@ -1,6 +1,29 @@
+"""Зависимости и утилиты для работы с контекстом HTTP-запроса.
+
+Модуль содержит функции для формирования контекста текущего запроса,
+извлечения идентификаторов запроса и корреляции, IP-адреса клиента и
+User-Agent. Контекст сохраняется в `request.state`, чтобы повторные обращения
+в рамках одного запроса возвращали один и тот же объект.
+
+Attributes:
+    REQUEST_ID_HEADER: Имя HTTP-заголовка с идентификатором запроса.
+    CORRELATION_ID_HEADER: Имя HTTP-заголовка с идентификатором корреляции.
+    FORWARDED_FOR_HEADER: Имя HTTP-заголовка с исходным IP-адресом клиента.
+    USER_AGENT_HEADER: Имя HTTP-заголовка с User-Agent клиента.
+    RequestContextDependency: FastAPI-зависимость для получения контекста
+        запроса.
+    RequestIdDependency: FastAPI-зависимость для получения идентификатора
+        запроса.
+    CorrelationIdDependency: FastAPI-зависимость для получения идентификатора
+        корреляции.
+    ClientIpDependency: FastAPI-зависимость для получения IP-адреса клиента.
+    UserAgentDependency: FastAPI-зависимость для получения User-Agent клиента.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
+from ipaddress import ip_address
 from typing import Annotated
 from uuid import uuid4
 
@@ -14,7 +37,18 @@ USER_AGENT_HEADER = "User-Agent"
 
 @dataclass(frozen=True, slots=True)
 class RequestContext:
-    """Контекст текущего HTTP-запроса."""
+    """Контекст текущего HTTP-запроса.
+
+    Хранит технические метаданные запроса, которые используются для логирования,
+    трассировки, аудита и передачи информации о клиенте в сервисный слой.
+
+    Attributes:
+        request_id: Уникальный идентификатор текущего запроса.
+        correlation_id: Идентификатор корреляции для связывания нескольких
+            связанных запросов или операций.
+        client_ip: IP-адрес клиента, если его удалось корректно определить.
+        user_agent: Значение HTTP-заголовка User-Agent, если оно передано.
+    """
 
     request_id: str
     correlation_id: str
@@ -23,7 +57,23 @@ class RequestContext:
 
 
 def build_request_context(request: Request) -> RequestContext:
-    """Собирает контекст запроса из state и HTTP-заголовков."""
+    """Собирает контекст запроса из состояния и HTTP-заголовков.
+
+    Если контекст уже был создан ранее и сохранён в `request.state`, возвращает
+    существующий объект. В противном случае формирует новый контекст на основе
+    заголовков запроса, данных клиента и fallback-значений, после чего сохраняет
+    его в состоянии запроса.
+
+    Args:
+        request: Текущий HTTP-запрос FastAPI.
+
+    Returns:
+        Контекст текущего HTTP-запроса.
+
+    Raises:
+        AttributeError: Если объект запроса не содержит ожидаемого состояния
+            приложения или состояния запроса.
+    """
 
     existing = getattr(request.state, "request_context", None)
     if isinstance(existing, RequestContext):
@@ -50,13 +100,34 @@ def build_request_context(request: Request) -> RequestContext:
 
 
 def get_request_context(request: Request) -> RequestContext:
-    """FastAPI dependency для получения контекста запроса."""
+    """Возвращает контекст текущего HTTP-запроса.
+
+    Используется как FastAPI-зависимость для получения объекта `RequestContext`
+    в эндпоинтах и других зависимостях.
+
+    Args:
+        request: Текущий HTTP-запрос FastAPI.
+
+    Returns:
+        Контекст текущего HTTP-запроса.
+    """
 
     return build_request_context(request)
 
 
-def get_request_id(context: Annotated[RequestContext, Depends(get_request_context)]) -> str:
-    """Возвращает идентификатор запроса."""
+def get_request_id(
+    context: Annotated[RequestContext, Depends(get_request_context)],
+) -> str:
+    """Возвращает идентификатор запроса.
+
+    Извлекает `request_id` из контекста текущего HTTP-запроса.
+
+    Args:
+        context: Контекст текущего HTTP-запроса.
+
+    Returns:
+        Уникальный идентификатор текущего запроса.
+    """
 
     return context.request_id
 
@@ -64,7 +135,16 @@ def get_request_id(context: Annotated[RequestContext, Depends(get_request_contex
 def get_correlation_id(
     context: Annotated[RequestContext, Depends(get_request_context)],
 ) -> str:
-    """Возвращает идентификатор корреляции."""
+    """Возвращает идентификатор корреляции.
+
+    Извлекает `correlation_id` из контекста текущего HTTP-запроса.
+
+    Args:
+        context: Контекст текущего HTTP-запроса.
+
+    Returns:
+        Идентификатор корреляции текущего запроса.
+    """
 
     return context.correlation_id
 
@@ -72,7 +152,16 @@ def get_correlation_id(
 def get_client_ip(
     context: Annotated[RequestContext, Depends(get_request_context)],
 ) -> str | None:
-    """Возвращает IP-адрес клиента."""
+    """Возвращает IP-адрес клиента.
+
+    Извлекает IP-адрес клиента из контекста текущего HTTP-запроса.
+
+    Args:
+        context: Контекст текущего HTTP-запроса.
+
+    Returns:
+        IP-адрес клиента или `None`, если адрес не удалось определить.
+    """
 
     return context.client_ip
 
@@ -80,7 +169,16 @@ def get_client_ip(
 def get_user_agent(
     context: Annotated[RequestContext, Depends(get_request_context)],
 ) -> str | None:
-    """Возвращает User-Agent клиента."""
+    """Возвращает User-Agent клиента.
+
+    Извлекает значение User-Agent из контекста текущего HTTP-запроса.
+
+    Args:
+        context: Контекст текущего HTTP-запроса.
+
+    Returns:
+        Значение User-Agent или `None`, если заголовок отсутствует.
+    """
 
     return context.user_agent
 
@@ -93,30 +191,96 @@ UserAgentDependency = Annotated[str | None, Depends(get_user_agent)]
 
 
 def _extract_client_ip(request: Request) -> str | None:
+    """Извлекает и валидирует IP-адрес клиента из запроса.
+
+    Сначала пытается получить первый адрес из заголовка `X-Forwarded-For`.
+    Если заголовок отсутствует или содержит некорректный адрес, использует
+    адрес клиента из `request.client`.
+
+    Args:
+        request: Текущий HTTP-запрос FastAPI.
+
+    Returns:
+        Валидный IP-адрес клиента или `None`, если адрес не удалось определить.
+    """
+
     forwarded_for = request.headers.get(FORWARDED_FOR_HEADER)
     if forwarded_for:
         first_ip = forwarded_for.split(",", maxsplit=1)[0]
         normalized_ip = _normalize_optional_text(first_ip)
-        if normalized_ip is not None:
+        if _is_valid_ip_address(normalized_ip):
             return normalized_ip
 
     if request.client is None:
         return None
 
-    return _normalize_optional_text(request.client.host)
+    host = _normalize_optional_text(request.client.host)
+    if _is_valid_ip_address(host):
+        return host
+    return None
 
 
 def _normalize_identifier(value: str | None, *, fallback: str) -> str:
+    """Нормализует строковый идентификатор.
+
+    Удаляет пробельные символы по краям значения и возвращает fallback,
+    если исходное значение отсутствует или после нормализации стало пустым.
+
+    Args:
+        value: Исходное значение идентификатора.
+        fallback: Значение, возвращаемое при отсутствии валидного
+            идентификатора.
+
+    Returns:
+        Нормализованный идентификатор или fallback-значение.
+    """
+
     normalized_value = _normalize_optional_text(value)
     return normalized_value or fallback
 
 
 def _normalize_optional_text(value: str | None) -> str | None:
+    """Нормализует необязательное текстовое значение.
+
+    Удаляет пробельные символы по краям строки. Пустые строки после
+    нормализации преобразует в `None`.
+
+    Args:
+        value: Исходное текстовое значение.
+
+    Returns:
+        Нормализованная строка или `None`, если значение отсутствует
+        или является пустым.
+    """
+
     if value is None:
         return None
 
     normalized_value = value.strip()
     return normalized_value or None
+
+
+def _is_valid_ip_address(value: str | None) -> bool:
+    """Проверяет корректность IP-адреса.
+
+    Валидирует строковое значение как IPv4- или IPv6-адрес с помощью
+    стандартного модуля `ipaddress`.
+
+    Args:
+        value: Проверяемое значение IP-адреса.
+
+    Returns:
+        `True`, если значение является корректным IP-адресом, иначе `False`.
+    """
+
+    if value is None:
+        return False
+
+    try:
+        ip_address(value)
+    except ValueError:
+        return False
+    return True
 
 
 __all__ = [

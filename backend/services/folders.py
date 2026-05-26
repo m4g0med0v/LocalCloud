@@ -223,6 +223,36 @@ class FoldersService:
                 exc, operation=operation, message="Failed to create folder."
             ) from exc
 
+    async def get_folder_node_id(self, folder_id: UUID) -> UUID:
+        """Возвращает идентификатор узла файловой системы для записи папки."""
+
+        operation = "get_folder_node_id"
+        node_id: UUID | None = None
+
+        try:
+            async with self.uow_factory() as uow:
+                folder = await uow.folders.get_required_folder_by_id(folder_id)
+                node_id = folder.node_id
+
+            if node_id is None:
+                raise _empty_result_error(operation)
+            return node_id
+
+        except DatabaseError as exc:
+            raise self._database_error(
+                exc,
+                operation=operation,
+                message="Failed to resolve folder node identifier.",
+            ) from exc
+        except ServiceError:
+            raise
+        except Exception as exc:
+            raise self._unexpected_error(
+                exc,
+                operation=operation,
+                message="Failed to resolve folder node identifier.",
+            ) from exc
+
     async def get_folder(
         self,
         node_id: UUID,
@@ -995,12 +1025,26 @@ class FoldersService:
                     flush=True,
                     refresh=True,
                 )
-                task.result_data = {
-                    "folder_id": str(folder.node_id),
-                    "archive_name": data.archive_name or node.name,
-                    "include_deleted": data.include_deleted,
-                    "password_protected": data.password is not None,
-                }
+                task = await uow.tasks.update(
+                    task,
+                    {
+                        "payload": {
+                            "folder_id": str(folder.node_id),
+                            "include_deleted": data.include_deleted,
+                            "archive_name": data.archive_name or node.name,
+                            "password": data.password,
+                        },
+                        "result_data": {
+                            "folder_id": str(folder.node_id),
+                            "archive_name": data.archive_name or node.name,
+                            "include_deleted": data.include_deleted,
+                            "password_protected": data.password is not None,
+                        }
+                    },
+                    flush=True,
+                    refresh=True,
+                    allowed_fields={"payload", "result_data"},
+                )
                 folder_snapshot = _folder_snapshot(folder)
                 task_snapshot = _task_snapshot(task)
                 await uow.commit()

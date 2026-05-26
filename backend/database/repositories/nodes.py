@@ -1301,6 +1301,8 @@ class FileSystemNodeRepository(BaseRepository[FileSystemNode]):
                 deleted_at=deleted_at,
                 flush=flush,
             )
+            if refresh and nodes:
+                await self.refresh(nodes[0])
             return nodes[0]
 
         node = await self.get_required_by_id(node_id)
@@ -1401,6 +1403,8 @@ class FileSystemNodeRepository(BaseRepository[FileSystemNode]):
                 flush=flush,
                 check_conflict=check_conflict,
             )
+            if refresh and nodes:
+                await self.refresh(nodes[0])
             return nodes[0]
 
         node = await self.get_required_by_id(node_id)

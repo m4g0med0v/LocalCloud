@@ -1,3 +1,16 @@
+"""Эндпоинты для работы с корзиной.
+
+Модуль содержит маршрутизатор FastAPI для просмотра элементов корзины,
+восстановления удалённых элементов, окончательного удаления отдельных элементов,
+очистки корзины пользователя и административной очистки устаревших элементов.
+
+Операции пользователя выполняются от имени текущего активного пользователя.
+Очистка устаревших элементов корзины доступна только текущему администратору.
+
+Attributes:
+    router: Маршрутизатор FastAPI с префиксом `/trash` и тегом `trash`.
+"""
+
 from __future__ import annotations
 
 from uuid import UUID
@@ -19,6 +32,7 @@ from schemas.trash import (
 from security import CurrentActiveUserDependency, CurrentAdminUserDependency
 from services import TrashService
 
+# Маршрутизатор эндпоинтов для работы с корзиной.
 router = APIRouter(prefix="/trash", tags=["trash"])
 
 
@@ -32,7 +46,26 @@ async def list_trash_items(
     params: TrashQueryParams = Depends(),
     trash_service: TrashService = Depends(get_trash_service_dependency),
 ) -> PageResponse[TrashItemListItem]:
-    """Возвращает список элементов корзины."""
+    """Возвращает список элементов корзины.
+
+    Получает страницу элементов корзины с учётом параметров фильтрации,
+    сортировки и пагинации. Результат формируется в контексте текущего
+    пользователя и его прав доступа.
+
+    Args:
+        current_user: Текущий активный пользователь, запрашивающий элементы
+            корзины.
+        params: Параметры запроса для фильтрации, сортировки и пагинации
+            элементов корзины.
+        trash_service: Сервис корзины, выполняющий получение списка элементов.
+
+    Returns:
+        Страница элементов корзины с метаданными пагинации.
+
+    Raises:
+        HTTPException: Если пользователь не аутентифицирован, неактивен,
+            параметры запроса некорректны или доступ запрещён.
+    """
 
     return await trash_service.list_trash(params, actor_id=current_user.id)
 
@@ -48,7 +81,25 @@ async def restore_trash_item(
     trash_item_id: UUID = Path(...),
     trash_service: TrashService = Depends(get_trash_service_dependency),
 ) -> TrashRestoreResponse:
-    """Восстанавливает элемент из корзины."""
+    """Восстанавливает элемент из корзины.
+
+    Подставляет идентификатор элемента корзины из URL в данные запроса
+    и передаёт восстановление в сервисный слой. Операция выполняется от имени
+    текущего пользователя.
+
+    Args:
+        data: Параметры восстановления элемента из корзины.
+        current_user: Текущий активный пользователь, выполняющий восстановление.
+        trash_item_id: Уникальный идентификатор элемента корзины.
+        trash_service: Сервис корзины, выполняющий восстановление элемента.
+
+    Returns:
+        Результат восстановления элемента из корзины.
+
+    Raises:
+        HTTPException: Если пользователь не аутентифицирован, элемент корзины
+            не найден, доступ запрещён или элемент нельзя восстановить.
+    """
 
     request_data = data.model_copy(update={"trash_item_id": trash_item_id})
     return await trash_service.restore(request_data, actor_id=current_user.id)
@@ -60,15 +111,37 @@ async def restore_trash_item(
     status_code=status.HTTP_200_OK,
 )
 async def purge_trash_item(
-    data: TrashPurgeRequest,
     current_user: CurrentActiveUserDependency,
     trash_item_id: UUID = Path(...),
     trash_service: TrashService = Depends(get_trash_service_dependency),
+    data: dict[str, str | None] | None = None,
 ) -> TrashPurgeResponse:
-    """Окончательно удаляет элемент из корзины."""
+    """Окончательно удаляет элемент из корзины.
 
-    request_data = data.model_copy(
-        update={"trash_item_ids": [trash_item_id], "node_ids": None}
+    Подставляет идентификатор элемента корзины из URL в список удаляемых
+    элементов, очищает список `node_ids` и запускает окончательное удаление
+    через сервисный слой. Операция необратимо удаляет элемент в рамках
+    бизнес-логики сервиса.
+
+    Args:
+        data: Параметры окончательного удаления из корзины.
+        current_user: Текущий активный пользователь, выполняющий удаление.
+        trash_item_id: Уникальный идентификатор элемента корзины.
+        trash_service: Сервис корзины, выполняющий окончательное удаление.
+
+    Returns:
+        Результат окончательного удаления элемента из корзины.
+
+    Raises:
+        HTTPException: Если пользователь не аутентифицирован, элемент корзины
+            не найден, доступ запрещён или элемент нельзя окончательно удалить.
+    """
+
+    reason = None if data is None else data.get("reason")
+    request_data = TrashPurgeRequest(
+        trash_item_ids=[trash_item_id],
+        node_ids=None,
+        reason=reason,
     )
     return await trash_service.purge(request_data, actor_id=current_user.id)
 
@@ -83,7 +156,24 @@ async def empty_trash(
     current_user: CurrentActiveUserDependency,
     trash_service: TrashService = Depends(get_trash_service_dependency),
 ) -> TrashPurgeResponse:
-    """Очищает корзину пользователя."""
+    """Очищает корзину текущего пользователя.
+
+    Окончательно удаляет элементы корзины, подходящие под параметры запроса,
+    в контексте текущего пользователя.
+
+    Args:
+        data: Параметры очистки корзины.
+        current_user: Текущий активный пользователь, очищающий корзину.
+        trash_service: Сервис корзины, выполняющий очистку.
+
+    Returns:
+        Результат очистки корзины.
+
+    Raises:
+        HTTPException: Если пользователь не аутентифицирован, неактивен,
+            параметры очистки некорректны, доступ запрещён или очистку нельзя
+            выполнить.
+    """
 
     return await trash_service.empty_trash(data, actor_id=current_user.id)
 
@@ -98,7 +188,25 @@ async def cleanup_trash(
     current_admin: CurrentAdminUserDependency,
     trash_service: TrashService = Depends(get_trash_service_dependency),
 ) -> TrashPurgeResponse:
-    """Запускает очистку устаревших элементов корзины."""
+    """Запускает очистку устаревших элементов корзины.
+
+    Выполняет административную очистку элементов корзины, срок хранения которых
+    истёк или которые соответствуют параметрам очистки. Операция выполняется
+    от имени текущего администратора.
+
+    Args:
+        data: Параметры очистки устаревших элементов корзины.
+        current_admin: Текущий авторизованный администратор, запускающий
+            очистку.
+        trash_service: Сервис корзины, выполняющий административную очистку.
+
+    Returns:
+        Результат очистки устаревших элементов корзины.
+
+    Raises:
+        HTTPException: Если администратор не аутентифицирован, доступ запрещён,
+            параметры очистки некорректны или очистку невозможно выполнить.
+    """
 
     return await trash_service.cleanup_expired(data, actor_id=current_admin.id)
 

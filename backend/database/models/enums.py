@@ -1,10 +1,62 @@
+"""Перечисления доменной модели приложения.
+
+Модуль содержит строковые перечисления, описывающие статусы, типы,
+уровни доступа, действия аудита и другие фиксированные значения,
+используемые в бизнес-логике LocalCloud.
+
+Перечисления основаны на `StrEnum`, поэтому их значения можно напрямую
+использовать как строки при сериализации, сохранении в базе данных и работе
+с API.
+
+Attributes:
+    UserStatus: Статусы учётной записи пользователя.
+    SystemRole: Системные роли пользователей.
+    RegistrationRequestStatus: Статусы запросов на регистрацию.
+    TokenType: Типы токенов безопасности.
+    SessionStatus: Статусы пользовательских сессий.
+    NodeType: Типы узлов файловой системы.
+    NodeVisibility: Уровни видимости файловых узлов.
+    FileProcessingStatus: Статусы обработки файлов.
+    FilePreviewStatus: Статусы генерации предпросмотра файлов.
+    FileVersionStatus: Статусы версий файлов.
+    UploadSessionStatus: Статусы сессий multipart-загрузки.
+    UploadPartStatus: Статусы частей multipart-загрузки.
+    StorageObjectStatus: Статусы физических объектов в хранилище.
+    PermissionLevel: Уровни доступа к ресурсам.
+    PermissionSubjectType: Типы субъектов разрешений.
+    PublicLinkPermissionType: Типы доступа публичных ссылок.
+    PublicLinkStatus: Статусы публичных ссылок.
+    TrashItemStatus: Статусы элементов корзины.
+    ArchiveStatus: Статусы подготовки ZIP-архивов.
+    QuotaResourceType: Типы ресурсов квотирования.
+    BackgroundTaskStatus: Статусы фоновых задач.
+    BackgroundTaskType: Типы фоновых задач.
+    TaskPriority: Приоритеты фоновых задач.
+    BackupStatus: Статусы резервного копирования.
+    HealthStatus: Статусы состояния компонентов системы.
+    AuditAction: Типы действий журнала аудита.
+    AuditResourceType: Типы ресурсов журнала аудита.
+    AuditResult: Результаты действий журнала аудита.
+"""
+
 from __future__ import annotations
 
 from enum import StrEnum
 
 
 class UserStatus(StrEnum):
-    """Статус учётной записи пользователя."""
+    """Статус учётной записи пользователя.
+
+    Описывает текущее состояние пользователя в системе: ожидание одобрения,
+    активность, блокировку, отклонение или удаление.
+
+    Attributes:
+        PENDING: Пользователь ожидает одобрения или завершения регистрации.
+        ACTIVE: Пользователь активен и может работать с системой.
+        BLOCKED: Пользователь заблокирован администратором.
+        REJECTED: Пользователь отклонён администратором.
+        DELETED: Пользователь помечен как удалённый.
+    """
 
     PENDING = "pending"
     ACTIVE = "active"
@@ -14,14 +66,31 @@ class UserStatus(StrEnum):
 
 
 class SystemRole(StrEnum):
-    """Системная роль пользователя."""
+    """Системная роль пользователя.
+
+    Описывает встроенные роли, используемые для базового разграничения прав
+    доступа в приложении.
+
+    Attributes:
+        ADMIN: Администратор системы.
+        USER: Обычный пользователь системы.
+    """
 
     ADMIN = "admin"
     USER = "user"
 
 
 class RegistrationRequestStatus(StrEnum):
-    """Статус запроса на регистрацию."""
+    """Статус запроса на регистрацию.
+
+    Описывает жизненный цикл заявки пользователя на регистрацию.
+
+    Attributes:
+        PENDING: Запрос ожидает рассмотрения.
+        APPROVED: Запрос одобрен.
+        REJECTED: Запрос отклонён.
+        CANCELLED: Запрос отменён.
+    """
 
     PENDING = "pending"
     APPROVED = "approved"
@@ -30,7 +99,18 @@ class RegistrationRequestStatus(StrEnum):
 
 
 class TokenType(StrEnum):
-    """Тип токена безопасности."""
+    """Тип токена безопасности.
+
+    Определяет назначение токена, используемого в механизмах аутентификации,
+    регистрации, сброса пароля и публичного доступа.
+
+    Attributes:
+        ACCESS: Access-токен для доступа к защищённым ресурсам.
+        REFRESH: Refresh-токен для обновления access-токена.
+        REGISTRATION_APPROVAL: Токен подтверждения или одобрения регистрации.
+        PASSWORD_RESET: Токен сброса пароля.
+        PUBLIC_LINK: Токен публичной ссылки.
+    """
 
     ACCESS = "access"
     REFRESH = "refresh"
@@ -40,7 +120,15 @@ class TokenType(StrEnum):
 
 
 class SessionStatus(StrEnum):
-    """Статус пользовательской сессии."""
+    """Статус пользовательской сессии.
+
+    Описывает состояние сессии пользователя в системе.
+
+    Attributes:
+        ACTIVE: Сессия активна.
+        REVOKED: Сессия отозвана.
+        EXPIRED: Сессия истекла.
+    """
 
     ACTIVE = "active"
     REVOKED = "revoked"
@@ -48,14 +136,31 @@ class SessionStatus(StrEnum):
 
 
 class NodeType(StrEnum):
-    """Тип узла в файловой системе."""
+    """Тип узла в файловой системе.
+
+    Используется для различения файлов и папок в иерархии пользовательского
+    хранилища.
+
+    Attributes:
+        FILE: Узел является файлом.
+        FOLDER: Узел является папкой.
+    """
 
     FILE = "file"
     FOLDER = "folder"
 
 
 class NodeVisibility(StrEnum):
-    """Уровень видимости файлового узла."""
+    """Уровень видимости файлового узла.
+
+    Описывает режим доступности узла файловой системы для владельца,
+    пользователей с правами доступа или публичных ссылок.
+
+    Attributes:
+        PRIVATE: Узел доступен только владельцу и явно разрешённым субъектам.
+        SHARED: Узел имеет выданные права доступа.
+        PUBLIC: Узел доступен через публичную ссылку.
+    """
 
     PRIVATE = "private"
     SHARED = "shared"
@@ -63,7 +168,16 @@ class NodeVisibility(StrEnum):
 
 
 class FileProcessingStatus(StrEnum):
-    """Статус обработки файла после загрузки."""
+    """Статус обработки файла после загрузки.
+
+    Описывает этап обработки файла после завершения его загрузки в систему.
+
+    Attributes:
+        PENDING: Обработка ожидает запуска.
+        PROCESSING: Файл находится в процессе обработки.
+        READY: Файл успешно обработан и готов к использованию.
+        FAILED: Обработка файла завершилась ошибкой.
+    """
 
     PENDING = "pending"
     PROCESSING = "processing"
@@ -72,7 +186,17 @@ class FileProcessingStatus(StrEnum):
 
 
 class FilePreviewStatus(StrEnum):
-    """Статус генерации предпросмотра файла."""
+    """Статус генерации предпросмотра файла.
+
+    Описывает состояние процесса создания preview-версии файла.
+
+    Attributes:
+        NOT_REQUIRED: Предпросмотр для файла не требуется.
+        PENDING: Генерация предпросмотра ожидает запуска.
+        GENERATING: Предпросмотр создаётся.
+        READY: Предпросмотр успешно создан.
+        FAILED: Генерация предпросмотра завершилась ошибкой.
+    """
 
     NOT_REQUIRED = "not_required"
     PENDING = "pending"
@@ -82,7 +206,15 @@ class FilePreviewStatus(StrEnum):
 
 
 class FileVersionStatus(StrEnum):
-    """Статус версии файла."""
+    """Статус версии файла.
+
+    Описывает состояние конкретной версии файла в системе версионирования.
+
+    Attributes:
+        ACTIVE: Версия файла активна.
+        ARCHIVED: Версия файла архивирована.
+        DELETED: Версия файла удалена или помечена как удалённая.
+    """
 
     ACTIVE = "active"
     ARCHIVED = "archived"
@@ -90,7 +222,18 @@ class FileVersionStatus(StrEnum):
 
 
 class UploadSessionStatus(StrEnum):
-    """Статус сессии многокомпонентной загрузки."""
+    """Статус сессии многокомпонентной загрузки.
+
+    Описывает состояние multipart-загрузки файла.
+
+    Attributes:
+        CREATED: Сессия загрузки создана.
+        UPLOADING: Выполняется загрузка частей файла.
+        COMPLETED: Загрузка успешно завершена.
+        FAILED: Загрузка завершилась ошибкой.
+        ABORTED: Загрузка отменена.
+        EXPIRED: Сессия загрузки истекла.
+    """
 
     CREATED = "created"
     UPLOADING = "uploading"
@@ -101,7 +244,15 @@ class UploadSessionStatus(StrEnum):
 
 
 class UploadPartStatus(StrEnum):
-    """Статус части многокомпонентной загрузки файла."""
+    """Статус части многокомпонентной загрузки файла.
+
+    Описывает состояние отдельной части файла в рамках multipart-загрузки.
+
+    Attributes:
+        PENDING: Часть ожидает загрузки.
+        UPLOADED: Часть успешно загружена.
+        FAILED: Загрузка части завершилась ошибкой.
+    """
 
     PENDING = "pending"
     UPLOADED = "uploaded"
@@ -109,7 +260,18 @@ class UploadPartStatus(StrEnum):
 
 
 class StorageObjectStatus(StrEnum):
-    """Статус физического объекта в MinIO/S3."""
+    """Статус физического объекта в MinIO/S3.
+
+    Описывает состояние объекта, размещённого в объектном хранилище.
+
+    Attributes:
+        PENDING: Объект ожидает создания или подтверждения.
+        AVAILABLE: Объект доступен в хранилище.
+        MISSING: Объект отсутствует в хранилище.
+        CORRUPTED: Объект повреждён или не прошёл проверку целостности.
+        DELETING: Объект находится в процессе удаления.
+        DELETED: Объект удалён из хранилища.
+    """
 
     PENDING = "pending"
     AVAILABLE = "available"
@@ -120,7 +282,18 @@ class StorageObjectStatus(StrEnum):
 
 
 class PermissionLevel(StrEnum):
-    """Уровень доступа к ресурсу."""
+    """Уровень доступа к ресурсу.
+
+    Определяет набор прав, который может быть выдан пользователю, роли
+    или другому субъекту доступа.
+
+    Attributes:
+        READ: Право просмотра ресурса.
+        DOWNLOAD: Право скачивания ресурса.
+        WRITE: Право изменения ресурса.
+        DELETE: Право удаления ресурса.
+        OWNER: Полные права владельца ресурса.
+    """
 
     READ = "read"
     DOWNLOAD = "download"
@@ -130,7 +303,15 @@ class PermissionLevel(StrEnum):
 
 
 class PermissionSubjectType(StrEnum):
-    """Тип субъекта, которому выдано разрешение."""
+    """Тип субъекта, которому выдано разрешение.
+
+    Используется для определения сущности, получающей права доступа к ресурсу.
+
+    Attributes:
+        USER: Разрешение выдано пользователю.
+        ROLE: Разрешение выдано роли.
+        PUBLIC_LINK: Разрешение связано с публичной ссылкой.
+    """
 
     USER = "user"
     ROLE = "role"
@@ -138,7 +319,15 @@ class PermissionSubjectType(StrEnum):
 
 
 class PublicLinkPermissionType(StrEnum):
-    """Тип доступа публичной ссылки."""
+    """Тип доступа публичной ссылки.
+
+    Определяет действия, доступные пользователю публичной ссылки.
+
+    Attributes:
+        VIEW: Доступ к просмотру ресурса.
+        DOWNLOAD: Доступ к скачиванию ресурса.
+        UPLOAD: Доступ к загрузке файлов через публичную ссылку.
+    """
 
     VIEW = "view"
     DOWNLOAD = "download"
@@ -146,7 +335,16 @@ class PublicLinkPermissionType(StrEnum):
 
 
 class PublicLinkStatus(StrEnum):
-    """Статус публичной ссылки."""
+    """Статус публичной ссылки.
+
+    Описывает состояние публичной ссылки и возможность её использования.
+
+    Attributes:
+        ACTIVE: Публичная ссылка активна.
+        DISABLED: Публичная ссылка отключена.
+        EXPIRED: Срок действия публичной ссылки истёк.
+        REVOKED: Публичная ссылка отозвана.
+    """
 
     ACTIVE = "active"
     DISABLED = "disabled"
@@ -155,7 +353,15 @@ class PublicLinkStatus(StrEnum):
 
 
 class TrashItemStatus(StrEnum):
-    """Статус элемента корзины."""
+    """Статус элемента корзины.
+
+    Описывает состояние объекта, помещённого в корзину.
+
+    Attributes:
+        IN_TRASH: Элемент находится в корзине.
+        RESTORED: Элемент восстановлен из корзины.
+        PURGED: Элемент окончательно удалён.
+    """
 
     IN_TRASH = "in_trash"
     RESTORED = "restored"
@@ -163,7 +369,18 @@ class TrashItemStatus(StrEnum):
 
 
 class ArchiveStatus(StrEnum):
-    """Статус подготовки ZIP-архива папки."""
+    """Статус подготовки ZIP-архива папки.
+
+    Описывает состояние фонового процесса создания архива папки.
+
+    Attributes:
+        PENDING: Создание архива ожидает запуска.
+        BUILDING: Архив создаётся.
+        READY: Архив готов к скачиванию.
+        FAILED: Создание архива завершилось ошибкой.
+        EXPIRED: Срок доступности архива истёк.
+        DELETED: Архив удалён.
+    """
 
     PENDING = "pending"
     BUILDING = "building"
@@ -174,7 +391,16 @@ class ArchiveStatus(StrEnum):
 
 
 class QuotaResourceType(StrEnum):
-    """Тип ресурса, на который действует квота."""
+    """Тип ресурса, на который действует квота.
+
+    Определяет метрику, ограничиваемую пользовательской или системной квотой.
+
+    Attributes:
+        STORAGE_BYTES: Квота на объём хранилища в байтах.
+        FILE_COUNT: Квота на количество файлов.
+        PUBLIC_LINK_COUNT: Квота на количество публичных ссылок.
+        UPLOAD_SESSION_COUNT: Квота на количество upload-сессий.
+    """
 
     STORAGE_BYTES = "storage_bytes"
     FILE_COUNT = "file_count"
@@ -183,7 +409,17 @@ class QuotaResourceType(StrEnum):
 
 
 class BackgroundTaskStatus(StrEnum):
-    """Статус выполнения фоновой задачи."""
+    """Статус выполнения фоновой задачи.
+
+    Описывает текущее состояние задачи, выполняемой в фоне.
+
+    Attributes:
+        PENDING: Задача ожидает запуска.
+        RUNNING: Задача выполняется.
+        COMPLETED: Задача успешно завершена.
+        FAILED: Задача завершилась ошибкой.
+        CANCELLED: Задача отменена.
+    """
 
     PENDING = "pending"
     RUNNING = "running"
@@ -193,7 +429,24 @@ class BackgroundTaskStatus(StrEnum):
 
 
 class BackgroundTaskType(StrEnum):
-    """Тип фоновой задачи."""
+    """Тип фоновой задачи.
+
+    Определяет назначение фоновой задачи: архивация, очистка, удаление объектов,
+    проверка целостности, генерация preview, пересчёт квот или резервное
+    копирование.
+
+    Attributes:
+        CREATE_FOLDER_ARCHIVE: Создание ZIP-архива папки.
+        CLEAN_TRASH: Очистка корзины.
+        CLEAN_EXPIRED_UPLOADS: Очистка истёкших upload-сессий.
+        CLEAN_EXPIRED_PUBLIC_LINKS: Очистка истёкших публичных ссылок.
+        DELETE_OBJECT_FROM_STORAGE: Удаление объекта из хранилища.
+        CHECK_STORAGE_INTEGRITY: Проверка целостности объектного хранилища.
+        GENERATE_FILE_PREVIEW: Генерация предпросмотра файла.
+        RECALCULATE_USER_QUOTA: Пересчёт пользовательской квоты.
+        BACKUP_DATABASE: Резервное копирование базы данных.
+        BACKUP_STORAGE: Резервное копирование объектного хранилища.
+    """
 
     CREATE_FOLDER_ARCHIVE = "create_folder_archive"
     CLEAN_TRASH = "clean_trash"
@@ -208,7 +461,17 @@ class BackgroundTaskType(StrEnum):
 
 
 class TaskPriority(StrEnum):
-    """Приоритет фоновой задачи."""
+    """Приоритет фоновой задачи.
+
+    Определяет относительную важность фоновой задачи при планировании
+    выполнения.
+
+    Attributes:
+        LOW: Низкий приоритет.
+        NORMAL: Обычный приоритет.
+        HIGH: Высокий приоритет.
+        CRITICAL: Критический приоритет.
+    """
 
     LOW = "low"
     NORMAL = "normal"
@@ -217,7 +480,16 @@ class TaskPriority(StrEnum):
 
 
 class BackupStatus(StrEnum):
-    """Статус резервного копирования."""
+    """Статус резервного копирования.
+
+    Описывает состояние процесса резервного копирования.
+
+    Attributes:
+        PENDING: Резервное копирование ожидает запуска.
+        RUNNING: Резервное копирование выполняется.
+        COMPLETED: Резервное копирование успешно завершено.
+        FAILED: Резервное копирование завершилось ошибкой.
+    """
 
     PENDING = "pending"
     RUNNING = "running"
@@ -226,7 +498,16 @@ class BackupStatus(StrEnum):
 
 
 class HealthStatus(StrEnum):
-    """Статус состояния компонента системы."""
+    """Статус состояния компонента системы.
+
+    Используется в health-check ответах для описания доступности компонентов
+    приложения.
+
+    Attributes:
+        OK: Компонент работает штатно.
+        DEGRADED: Компонент работает с ухудшением или частичными проблемами.
+        UNAVAILABLE: Компонент недоступен.
+    """
 
     OK = "ok"
     DEGRADED = "degraded"
@@ -234,7 +515,90 @@ class HealthStatus(StrEnum):
 
 
 class AuditAction(StrEnum):
-    """Тип действия в журнале аудита."""
+    """Тип действия в журнале аудита.
+
+    Перечисляет действия пользователей, администраторов, фоновых задач
+    и системных процессов, которые могут фиксироваться в журнале аудита.
+
+    Attributes:
+        USER_LOGIN: Успешный вход пользователя.
+        USER_LOGOUT: Выход пользователя.
+        USER_LOGIN_FAILED: Неуспешная попытка входа пользователя.
+        USER_REFRESH_TOKEN_ROTATED: Ротация refresh-токена пользователя.
+        USER_SESSION_REVOKED: Отзыв пользовательской сессии.
+        USER_CREATED: Создание пользователя.
+        USER_UPDATED: Обновление пользователя.
+        USER_BLOCKED: Блокировка пользователя.
+        USER_UNBLOCKED: Разблокировка пользователя.
+        USER_DELETED: Удаление пользователя.
+        USER_ROLE_ASSIGNED: Назначение роли пользователю.
+        USER_ROLE_REMOVED: Удаление роли у пользователя.
+        REGISTRATION_REQUEST_CREATED: Создание запроса на регистрацию.
+        REGISTRATION_REQUEST_APPROVED: Одобрение запроса на регистрацию.
+        REGISTRATION_REQUEST_REJECTED: Отклонение запроса на регистрацию.
+        REGISTRATION_REQUEST_CANCELLED: Отмена запроса на регистрацию.
+        FOLDER_CREATED: Создание папки.
+        FOLDER_RENAMED: Переименование папки.
+        FOLDER_MOVED: Перемещение папки.
+        FOLDER_DELETED: Удаление папки.
+        FOLDER_RESTORED: Восстановление папки.
+        FOLDER_PURGED: Окончательное удаление папки.
+        FOLDER_ARCHIVE_REQUESTED: Запрос на создание архива папки.
+        FOLDER_ARCHIVE_CREATED: Создание архива папки.
+        FILE_UPLOAD_STARTED: Начало загрузки файла.
+        FILE_UPLOADED: Успешная загрузка файла.
+        FILE_UPLOAD_FAILED: Ошибка загрузки файла.
+        FILE_DOWNLOADED: Скачивание файла.
+        FILE_RENAMED: Переименование файла.
+        FILE_MOVED: Перемещение файла.
+        FILE_UPDATED: Обновление файла.
+        FILE_DELETED: Удаление файла.
+        FILE_RESTORED: Восстановление файла.
+        FILE_PURGED: Окончательное удаление файла.
+        FILE_VERSION_CREATED: Создание версии файла.
+        FILE_VERSION_RESTORED: Восстановление версии файла.
+        FILE_PREVIEW_GENERATED: Генерация предпросмотра файла.
+        NODE_CREATED: Создание узла файловой системы.
+        NODE_RENAMED: Переименование узла файловой системы.
+        NODE_MOVED: Перемещение узла файловой системы.
+        NODE_DELETED: Удаление узла файловой системы.
+        NODE_RESTORED: Восстановление узла файловой системы.
+        NODE_PURGED: Окончательное удаление узла файловой системы.
+        PERMISSION_GRANTED: Выдача разрешения.
+        PERMISSION_UPDATED: Обновление разрешения.
+        PERMISSION_REVOKED: Отзыв разрешения.
+        PUBLIC_LINK_CREATED: Создание публичной ссылки.
+        PUBLIC_LINK_OPENED: Открытие публичной ссылки.
+        PUBLIC_LINK_DOWNLOADED: Скачивание через публичную ссылку.
+        PUBLIC_LINK_REVOKED: Отзыв публичной ссылки.
+        PUBLIC_LINK_EXPIRED: Истечение срока действия публичной ссылки.
+        UPLOAD_SESSION_CREATED: Создание upload-сессии.
+        UPLOAD_SESSION_COMPLETED: Завершение upload-сессии.
+        UPLOAD_SESSION_FAILED: Ошибка upload-сессии.
+        UPLOAD_SESSION_ABORTED: Отмена upload-сессии.
+        UPLOAD_SESSION_EXPIRED: Истечение upload-сессии.
+        QUOTA_CREATED: Создание квоты.
+        QUOTA_UPDATED: Обновление квоты.
+        QUOTA_EXCEEDED: Превышение квоты.
+        QUOTA_RECALCULATED: Пересчёт квоты.
+        BACKGROUND_TASK_CREATED: Создание фоновой задачи.
+        BACKGROUND_TASK_STARTED: Запуск фоновой задачи.
+        BACKGROUND_TASK_COMPLETED: Завершение фоновой задачи.
+        BACKGROUND_TASK_FAILED: Ошибка фоновой задачи.
+        BACKGROUND_TASK_CANCELLED: Отмена фоновой задачи.
+        STORAGE_OBJECT_DELETED: Удаление объекта из хранилища.
+        STORAGE_OBJECT_DELETE_FAILED: Ошибка удаления объекта из хранилища.
+        STORAGE_INTEGRITY_CHECK_STARTED: Запуск проверки целостности хранилища.
+        STORAGE_INTEGRITY_CHECK_COMPLETED: Завершение проверки целостности.
+        STORAGE_INTEGRITY_PROBLEM_FOUND: Обнаружение проблемы целостности.
+        BACKUP_STARTED: Запуск резервного копирования.
+        BACKUP_COMPLETED: Завершение резервного копирования.
+        BACKUP_FAILED: Ошибка резервного копирования.
+        SECURITY_PERMISSION_DENIED: Отказ в доступе.
+        SECURITY_SUSPICIOUS_ACTIVITY: Подозрительная активность.
+        SECURITY_PUBLIC_LINK_PASSWORD_FAILED: Ошибка ввода пароля публичной
+            ссылки.
+    """
 
     # Аутентификация
     USER_LOGIN = "user.login"
@@ -342,7 +706,27 @@ class AuditAction(StrEnum):
 
 
 class AuditResourceType(StrEnum):
-    """Тип ресурса, к которому относится запись журнала аудита."""
+    """Тип ресурса, к которому относится запись журнала аудита.
+
+    Определяет доменную сущность или системный компонент, связанный
+    с аудируемым действием.
+
+    Attributes:
+        USER: Пользователь.
+        ROLE: Роль.
+        REGISTRATION_REQUEST: Запрос на регистрацию.
+        SESSION: Пользовательская сессия.
+        FILE: Файл.
+        FOLDER: Папка.
+        NODE: Узел файловой системы.
+        UPLOAD_SESSION: Upload-сессия.
+        PUBLIC_LINK: Публичная ссылка.
+        PERMISSION: Разрешение.
+        QUOTA: Квота.
+        BACKGROUND_TASK: Фоновая задача.
+        STORAGE_OBJECT: Объект хранилища.
+        SYSTEM: Системный ресурс или компонент.
+    """
 
     USER = "user"
     ROLE = "role"
@@ -361,7 +745,16 @@ class AuditResourceType(StrEnum):
 
 
 class AuditResult(StrEnum):
-    """Результат действия, зафиксированного в журнале аудита."""
+    """Результат действия, зафиксированного в журнале аудита.
+
+    Описывает итог аудируемой операции.
+
+    Attributes:
+        SUCCESS: Операция успешно выполнена.
+        FAILURE: Операция завершилась ошибкой.
+        DENIED: Операция отклонена из-за отсутствия доступа.
+        WARNING: Операция завершилась с предупреждением.
+    """
 
     SUCCESS = "success"
     FAILURE = "failure"

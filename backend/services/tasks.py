@@ -432,7 +432,7 @@ class TasksService:
         offset = max(0, params.offset)
         sort_by = _normalize_sort_by(params.sort_by)
         sort_direction: Literal["asc", "desc"] = "desc" if params.sort_desc else "asc"
-        tasks: list[Any] = []
+        snapshots: list[dict[str, Any]] = []
         total = 0
 
         try:
@@ -467,15 +467,15 @@ class TasksService:
                     related_entity_type=params.related_entity_type,
                     related_entity_id=params.related_entity_id,
                 )
+                snapshots = [
+                    _task_snapshot(task)
+                    for task in tasks
+                    if _matches_extra_query_filters(task, params=params)
+                ]
 
-            filtered = [
-                task
-                for task in tasks
-                if _matches_extra_query_filters(task, params=params)
-            ]
             items = [
-                BackgroundTaskListItem.model_validate(_task_snapshot(task))
-                for task in filtered
+                BackgroundTaskListItem.model_validate(snapshot)
+                for snapshot in snapshots
             ]
             return PageResponse(
                 items=items,

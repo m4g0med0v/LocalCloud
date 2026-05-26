@@ -1,3 +1,15 @@
+"""Зависимости FastAPI для получения сервисов приложения.
+
+Модуль содержит функции-зависимости, которые возвращают экземпляры сервисов
+доменной логики. Эти функции используются в эндпоинтах FastAPI через `Depends`
+для внедрения сервисов аутентификации, регистрации, пользователей, ролей,
+файлов, папок, загрузок, корзины, прав доступа, публичных ссылок, квот,
+аудита, задач и проверки состояния приложения.
+
+Attributes:
+    __all__: Список публично экспортируемых функций-зависимостей.
+"""
+
 from __future__ import annotations
 
 from fastapi import Request
@@ -39,70 +51,231 @@ from services.users import get_users_service
 
 
 def get_auth_service_dependency() -> AuthService:
+    """Возвращает сервис аутентификации.
+
+    Получает экземпляр `AuthService` через фабричную функцию сервисного слоя.
+    Используется как зависимость FastAPI в эндпоинтах аутентификации.
+
+    Returns:
+        Сервис аутентификации.
+    """
+
     return get_auth_service()
 
 
 def get_registration_service_dependency() -> RegistrationService:
+    """Возвращает сервис регистрации.
+
+    Получает экземпляр `RegistrationService` через фабричную функцию
+    сервисного слоя. Используется как зависимость FastAPI в эндпоинтах
+    регистрации пользователей.
+
+    Returns:
+        Сервис регистрации.
+    """
+
     return get_registration_service()
 
 
 def get_users_service_dependency() -> UsersService:
+    """Возвращает сервис пользователей.
+
+    Получает экземпляр `UsersService` через фабричную функцию сервисного слоя.
+    Используется как зависимость FastAPI в эндпоинтах работы с пользователями.
+
+    Returns:
+        Сервис пользователей.
+    """
+
     return get_users_service()
 
 
 def get_roles_service_dependency() -> RolesService:
+    """Возвращает сервис ролей.
+
+    Получает экземпляр `RolesService` через фабричную функцию сервисного слоя.
+    Используется как зависимость FastAPI в эндпоинтах управления ролями.
+
+    Returns:
+        Сервис ролей.
+    """
+
     return get_roles_service()
 
 
 def get_quotas_service_dependency() -> QuotasService:
+    """Возвращает сервис квот.
+
+    Получает экземпляр `QuotasService` через фабричную функцию сервисного слоя.
+    Используется как зависимость FastAPI в эндпоинтах работы с квотами.
+
+    Returns:
+        Сервис квот.
+    """
+
     return get_quotas_service()
 
 
 def get_nodes_service_dependency() -> NodesService:
+    """Возвращает сервис узлов файловой структуры.
+
+    Получает экземпляр `NodesService` через фабричную функцию сервисного слоя.
+    Используется как зависимость FastAPI в эндпоинтах работы с узлами.
+
+    Returns:
+        Сервис узлов файловой структуры.
+    """
+
     return get_nodes_service()
 
 
 def get_folders_service_dependency() -> FoldersService:
+    """Возвращает сервис папок.
+
+    Получает экземпляр `FoldersService` через фабричную функцию сервисного слоя.
+    Используется как зависимость FastAPI в эндпоинтах работы с папками.
+
+    Returns:
+        Сервис папок.
+    """
+
     return get_folders_service()
 
 
 def get_files_service_dependency() -> FilesService:
+    """Возвращает сервис файлов.
+
+    Получает экземпляр `FilesService` через фабричную функцию сервисного слоя.
+    Используется как зависимость FastAPI в эндпоинтах работы с файлами.
+
+    Returns:
+        Сервис файлов.
+    """
+
     return get_files_service()
 
 
 def get_uploads_service_dependency() -> UploadsService:
+    """Возвращает сервис загрузок.
+
+    Получает экземпляр `UploadsService` через фабричную функцию сервисного слоя.
+    Используется как зависимость FastAPI в эндпоинтах multipart-загрузок.
+
+    Returns:
+        Сервис загрузок.
+    """
+
     return get_uploads_service()
 
 
 def get_downloads_service_dependency() -> DownloadsService:
+    """Возвращает сервис скачиваний.
+
+    Получает экземпляр `DownloadsService` через фабричную функцию сервисного
+    слоя. Используется как зависимость FastAPI в эндпоинтах скачивания файлов.
+
+    Returns:
+        Сервис скачиваний.
+    """
+
     return get_downloads_service()
 
 
 def get_trash_service_dependency() -> TrashService:
+    """Возвращает сервис корзины.
+
+    Получает экземпляр `TrashService` через фабричную функцию сервисного слоя.
+    Используется как зависимость FastAPI в эндпоинтах работы с корзиной.
+
+    Returns:
+        Сервис корзины.
+    """
+
     return get_trash_service()
 
 
 def get_permissions_service_dependency() -> PermissionsService:
+    """Возвращает сервис прав доступа.
+
+    Получает экземпляр `PermissionsService` через фабричную функцию сервисного
+    слоя. Используется как зависимость FastAPI в эндпоинтах управления правами
+    доступа.
+
+    Returns:
+        Сервис прав доступа.
+    """
+
     return get_permissions_service()
 
 
 def get_public_links_service_dependency() -> PublicLinksService:
+    """Возвращает сервис публичных ссылок.
+
+    Получает экземпляр `PublicLinksService` через фабричную функцию сервисного
+    слоя. Используется как зависимость FastAPI в эндпоинтах работы с публичными
+    ссылками.
+
+    Returns:
+        Сервис публичных ссылок.
+    """
+
     return get_public_links_service()
 
 
 def get_audit_service_dependency() -> AuditService:
+    """Возвращает сервис аудита.
+
+    Получает экземпляр `AuditService` через фабричную функцию сервисного слоя.
+    Используется как зависимость FastAPI в эндпоинтах просмотра событий аудита.
+
+    Returns:
+        Сервис аудита.
+    """
+
     return get_audit_service()
 
 
 def get_tasks_service_dependency() -> TasksService:
+    """Возвращает сервис задач.
+
+    Получает экземпляр `TasksService` через фабричную функцию сервисного слоя.
+    Используется как зависимость FastAPI в эндпоинтах работы с фоновыми
+    задачами.
+
+    Returns:
+        Сервис задач.
+    """
+
     return get_tasks_service()
 
 
 def get_health_service_dependency() -> HealthService:
+    """Возвращает сервис проверки состояния приложения.
+
+    Получает экземпляр `HealthService` через фабричную функцию сервисного слоя.
+    Используется как зависимость FastAPI в эндпоинтах health-check.
+
+    Returns:
+        Сервис проверки состояния приложения.
+    """
+
     return get_health_service()
 
 
 def get_health_service_from_request_dependency(request: Request) -> HealthService:
+    """Возвращает сервис проверки состояния из состояния приложения.
+
+    Пытается получить экземпляр `HealthService` из `request.app.state`.
+    Если сервис отсутствует в состоянии приложения или имеет неподходящий тип,
+    возвращает экземпляр через стандартную фабричную функцию сервисного слоя.
+
+    Args:
+        request: Текущий HTTP-запрос FastAPI, содержащий ссылку на приложение.
+
+    Returns:
+        Сервис проверки состояния приложения.
+    """
+
     health_service = getattr(request.app.state, "health_service", None)
     if isinstance(health_service, HealthService):
         return health_service

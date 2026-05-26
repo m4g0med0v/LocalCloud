@@ -1,3 +1,19 @@
+"""Эндпоинты аутентификации и управления пользовательскими сессиями.
+
+Модуль содержит маршрутизатор FastAPI для входа пользователя, обновления
+токенов, выхода из системы, получения данных текущего пользователя, просмотра
+и отзыва refresh-сессий, а также изменения пароля.
+
+Маршруты используют cookie-based refresh-токены и сервисы аутентификации
+и пользователей для выполнения бизнес-логики. Часть эндпоинтов доступна без
+активной пользовательской сессии, а маршруты `/me`, `/sessions`,
+`/sessions/{session_id}` и `/password/change` требуют текущего активного
+пользователя.
+
+Attributes:
+    router: Маршрутизатор FastAPI с префиксом `/auth` и тегом `auth`.
+"""
+
 from __future__ import annotations
 
 from uuid import UUID
@@ -5,6 +21,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Path, Query, Request, Response, status
 
 from api.dependencies import get_auth_service_dependency, get_users_service_dependency
+from app.dependencies import build_request_context
 from schemas.auth import (
     AuthSessionRead,
     LoginRequest,
@@ -22,29 +39,59 @@ from security import (
 )
 from services import AuthService, UsersService
 
+# Маршрутизатор эндпоинтов аутентификации.
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 def _client_ip(request: Request) -> str | None:
-    """Возвращает IP-адрес клиента из запроса."""
+    """Возвращает IP-адрес клиента из HTTP-запроса.
 
-    if request.client is None:
-        return None
-    return request.client.host
+    Формирует контекст запроса и извлекает из него IP-адрес клиента. Значение
+    может отсутствовать, если адрес невозможно определить из входящего запроса.
+
+    Args:
+        request: Входящий HTTP-запрос FastAPI.
+
+    Returns:
+        IP-адрес клиента или `None`, если адрес не был определён.
+    """
+
+    return build_request_context(request).client_ip
 
 
 def _user_agent(request: Request) -> str | None:
-    """Возвращает User-Agent клиента из запроса."""
+    """Возвращает User-Agent клиента из HTTP-запроса.
 
-    user_agent = request.headers.get("user-agent")
-    if user_agent is None:
-        return None
-    normalized = user_agent.strip()
-    return normalized or None
+    Формирует контекст запроса и извлекает из него строку User-Agent. Значение
+    может отсутствовать, если соответствующий заголовок не передан клиентом.
+
+    Args:
+        request: Входящий HTTP-запрос FastAPI.
+
+    Returns:
+        Строка User-Agent клиента или `None`, если заголовок отсутствует.
+    """
+
+    return build_request_context(request).user_agent
 
 
 def _refresh_token_from_request(request: Request) -> str:
-    """Извлекает refresh-токен из cookie запроса."""
+    """Извлекает refresh-токен из cookie HTTP-запроса.
+
+    Делегирует получение refresh-токена функции безопасности. Если cookie
+    отсутствует или содержит некорректное значение, преобразует ошибку cookie
+    в стандартную ошибку неавторизованного доступа.
+
+    Args:
+        request: Входящий HTTP-запрос FastAPI.
+
+    Returns:
+        Refresh-токен, полученный из cookie запроса.
+
+    Raises:
+        HTTPException: Если refresh-токен отсутствует в cookie или не может
+            быть извлечён.
+    """
 
     try:
         return require_refresh_token_from_cookies(request)
@@ -63,7 +110,28 @@ async def login(
     response: Response,
     auth_service: AuthService = Depends(get_auth_service_dependency),
 ) -> LoginResponse:
-    """Выполняет вход пользователя."""
+    """Выполняет вход пользователя в систему.
+
+    Проверяет переданные учётные данные, создаёт пользовательскую сессию,
+    устанавливает необходимые auth cookies в HTTP-ответ и возвращает данные
+    успешной аутентификации.
+
+    Args:
+        data: Данные для входа пользователя, например логин или email и пароль.
+        request: Входящий HTTP-запрос, из которого извлекаются IP-адрес
+            и User-Agent клиента.
+        response: HTTP-ответ FastAPI, в который сервис может установить
+            cookies аутентификации.
+        auth_service: Сервис аутентификации, выполняющий бизнес-логику входа.
+
+    Returns:
+        Данные успешного входа пользователя.
+
+    Raises:
+        HTTPException: Если учётные данные некорректны, пользователь
+            заблокирован, неактивен или вход запрещён политиками безопасности.
+            Исключение может быть вызвано внутри сервисного слоя.
+    """
 
     return await auth_service.login(
         data,
@@ -83,7 +151,25 @@ async def refresh_session(
     response: Response,
     auth_service: AuthService = Depends(get_auth_service_dependency),
 ) -> RefreshTokenResponse:
-    """Обновляет access/refresh токены по refresh cookie."""
+    """Обновляет пользовательскую сессию по refresh-токену.
+
+    Извлекает refresh-токен из cookie запроса, проверяет его через сервис
+    аутентификации, выпускает новую пару токенов и обновляет auth cookies
+    в HTTP-ответе.
+
+    Args:
+        request: Входящий HTTP-запрос, содержащий refresh-токен в cookie.
+        response: HTTP-ответ FastAPI, в который сервис может установить
+            обновлённые cookies аутентификации.
+        auth_service: Сервис аутентификации, выполняющий обновление сессии.
+
+    Returns:
+        Данные обновлённой access/refresh-сессии.
+
+    Raises:
+        HTTPException: Если refresh-токен отсутствует, недействителен, истёк,
+            был отозван или обновление сессии запрещено.
+    """
 
     refresh_token = _refresh_token_from_request(request)
     return await auth_service.refresh_session(
@@ -104,7 +190,25 @@ async def logout(
     response: Response,
     auth_service: AuthService = Depends(get_auth_service_dependency),
 ) -> LogoutResponse:
-    """Выполняет выход пользователя и очищает auth cookies."""
+    """Выполняет выход пользователя из системы.
+
+    Пытается получить refresh-токен из cookie запроса, отзывает связанную
+    с ним сессию при наличии токена и очищает auth cookies в HTTP-ответе.
+    Отсутствие refresh-токена не прерывает выполнение выхода.
+
+    Args:
+        request: Входящий HTTP-запрос, из которого при наличии извлекается
+            refresh-токен.
+        response: HTTP-ответ FastAPI, в котором сервис очищает auth cookies.
+        auth_service: Сервис аутентификации, выполняющий выход пользователя.
+
+    Returns:
+        Результат выхода из системы.
+
+    Raises:
+        HTTPException: Если сервис аутентификации не смог выполнить выход
+            или отзыв сессии по причинам, не связанным с отсутствием cookie.
+    """
 
     refresh_token = None
     try:
@@ -125,7 +229,21 @@ async def logout(
     status_code=status.HTTP_200_OK,
 )
 async def get_me(user: CurrentActiveUserDependency) -> CurrentUserRead:
-    """Возвращает данные текущего активного пользователя."""
+    """Возвращает данные текущего активного пользователя.
+
+    Преобразует объект текущего пользователя, полученный из зависимости
+    безопасности, в публичную схему ответа.
+
+    Args:
+        user: Текущий активный пользователь.
+
+    Returns:
+        Публичные данные текущего пользователя.
+
+    Raises:
+        HTTPException: Если пользователь не аутентифицирован, неактивен
+            или доступ запрещён.
+    """
 
     return CurrentUserRead.model_validate(user)
 
@@ -142,7 +260,26 @@ async def list_sessions(
     offset: int = Query(default=0, ge=0),
     auth_service: AuthService = Depends(get_auth_service_dependency),
 ) -> list[AuthSessionRead]:
-    """Возвращает список сессий текущего пользователя."""
+    """Возвращает список refresh-сессий текущего пользователя.
+
+    Получает активные или все сессии пользователя с поддержкой лимита
+    и смещения. По умолчанию возвращаются только активные сессии.
+
+    Args:
+        user: Текущий активный пользователь.
+        include_inactive: Нужно ли включать в результат неактивные,
+            отозванные или завершённые сессии.
+        limit: Максимальное количество сессий в ответе.
+        offset: Смещение от начала списка сессий.
+        auth_service: Сервис аутентификации, выполняющий получение сессий.
+
+    Returns:
+        Список refresh-сессий текущего пользователя.
+
+    Raises:
+        HTTPException: Если пользователь не аутентифицирован, неактивен
+            или параметры пагинации не прошли валидацию.
+    """
 
     return await auth_service.list_sessions(
         user_id=user.id,
@@ -162,7 +299,25 @@ async def revoke_session(
     session_id: UUID = Path(...),
     auth_service: AuthService = Depends(get_auth_service_dependency),
 ) -> AuthSessionRead:
-    """Отзывает конкретную refresh-сессию пользователя."""
+    """Отзывает refresh-сессию текущего пользователя.
+
+    Завершает указанную refresh-сессию, если она принадлежит текущему
+    пользователю. Используется для ручного выхода из отдельной сессии
+    на конкретном устройстве или клиенте.
+
+    Args:
+        user: Текущий активный пользователь.
+        session_id: Уникальный идентификатор refresh-сессии, которую нужно
+            отозвать.
+        auth_service: Сервис аутентификации, выполняющий отзыв сессии.
+
+    Returns:
+        Данные отозванной refresh-сессии.
+
+    Raises:
+        HTTPException: Если пользователь не аутентифицирован, сессия не найдена,
+            не принадлежит текущему пользователю или уже не может быть отозвана.
+    """
 
     return await auth_service.revoke_session(
         user_id=user.id,
@@ -181,7 +336,25 @@ async def change_password(
     user: CurrentActiveUserDependency,
     users_service: UsersService = Depends(get_users_service_dependency),
 ) -> CurrentUserRead:
-    """Изменяет пароль текущего активного пользователя."""
+    """Изменяет пароль текущего активного пользователя.
+
+    Передаёт новый пароль в сервис пользователей и выполняет изменение пароля
+    от имени самого пользователя. После успешного изменения возвращает текущие
+    публичные данные пользователя.
+
+    Args:
+        data: Данные запроса на изменение пароля.
+        user: Текущий активный пользователь, для которого меняется пароль.
+        users_service: Сервис пользователей, выполняющий изменение пароля.
+
+    Returns:
+        Публичные данные текущего пользователя.
+
+    Raises:
+        HTTPException: Если пользователь не аутентифицирован, неактивен,
+            новый пароль не соответствует требованиям безопасности или
+            изменение пароля запрещено.
+    """
 
     await users_service.change_password(
         user_id=user.id,

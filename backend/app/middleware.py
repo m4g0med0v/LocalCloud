@@ -1,3 +1,17 @@
+"""Middleware backend-приложения.
+
+Модуль содержит middleware для формирования контекста HTTP-запроса,
+логирования начала и завершения запросов, добавления security headers,
+настройки CORS и GZip-сжатия ответов.
+
+Контекст запроса включает request id, correlation id, IP-адрес клиента
+и User-Agent. Идентификаторы также добавляются в заголовки HTTP-ответа.
+
+Attributes:
+    logger: Логгер middleware backend-приложения.
+    DEFAULT_CORS_ORIGINS: Разрешённые origins для локальной разработки.
+"""
+
 from __future__ import annotations
 
 import time
@@ -12,8 +26,8 @@ from starlette.responses import Response
 from app.dependencies import (
     CORRELATION_ID_HEADER,
     REQUEST_ID_HEADER,
-    RequestContext,
     USER_AGENT_HEADER,
+    RequestContext,
     build_request_context,
 )
 from core.logging import get_logger
@@ -33,9 +47,40 @@ DEFAULT_CORS_ORIGINS: tuple[str, ...] = (
 
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
-    """Назначает request/correlation id и ведёт request-логирование."""
+    """Назначает request/correlation id и ведёт request-логирование.
+
+    Middleware создаёт или переиспользует контекст текущего HTTP-запроса,
+    записывает лог начала обработки, передаёт запрос следующему обработчику
+    и после завершения добавляет идентификаторы запроса и корреляции
+    в заголовки ответа.
+
+    При возникновении исключения во время обработки запроса middleware
+    записывает ошибку в лог и пробрасывает исключение дальше.
+
+    Attributes:
+        dispatch: Основной метод обработки HTTP-запроса middleware.
+    """
 
     async def dispatch(self, request: Request, call_next) -> Response:
+        """Обрабатывает HTTP-запрос и добавляет контекст запроса.
+
+        Создаёт или получает существующий `RequestContext`, логирует начало
+        обработки запроса, измеряет длительность выполнения, добавляет
+        `X-Request-ID` и `X-Correlation-ID` в ответ и логирует результат.
+
+        Args:
+            request: Текущий HTTP-запрос.
+            call_next: Следующий обработчик в цепочке middleware.
+
+        Returns:
+            HTTP-ответ следующего обработчика с добавленными заголовками
+            идентификаторов запроса и корреляции.
+
+        Raises:
+            Exception: Если следующий обработчик или нижележащий код приложения
+                выбросил исключение.
+        """
+
         context = self._get_or_create_context(request)
         started_at = time.perf_counter()
 
@@ -87,6 +132,19 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
 
     @staticmethod
     def _get_or_create_context(request: Request) -> RequestContext:
+        """Возвращает существующий или создаёт новый контекст запроса.
+
+        Проверяет наличие `RequestContext` в `request.state`. Если контекст
+        отсутствует, создаёт его на основе HTTP-заголовков и данных клиента.
+        Дополнительно гарантирует наличие непустого `request_id`.
+
+        Args:
+            request: Текущий HTTP-запрос.
+
+        Returns:
+            Контекст текущего HTTP-запроса.
+        """
+
         existing = getattr(request.state, "request_context", None)
         if isinstance(existing, RequestContext):
             return existing
@@ -106,20 +164,57 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    """Добавляет базовые security headers к ответам."""
+    """Добавляет базовые security headers к ответам.
+
+    Middleware устанавливает набор защитных HTTP-заголовков, если они ещё
+    не были заданы нижележащими обработчиками. Заголовки уменьшают риск
+    MIME-sniffing, clickjacking и нежелательного доступа к браузерным
+    возможностям.
+
+    Attributes:
+        dispatch: Основной метод обработки HTTP-запроса middleware.
+    """
 
     async def dispatch(self, request: Request, call_next) -> Response:
+        """Обрабатывает запрос и добавляет security headers в ответ.
+
+        Передаёт запрос следующему обработчику, затем дополняет ответ базовыми
+        заголовками безопасности.
+
+        Args:
+            request: Текущий HTTP-запрос.
+            call_next: Следующий обработчик в цепочке middleware.
+
+        Returns:
+            HTTP-ответ с добавленными security headers.
+        """
+
         response = await call_next(request)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
-        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-        response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        response.headers.setdefault(
+            "Referrer-Policy", "strict-origin-when-cross-origin"
+        )
+        response.headers.setdefault(
+            "Permissions-Policy", "camera=(), microphone=(), geolocation=()"
+        )
         response.headers.setdefault("X-Permitted-Cross-Domain-Policies", "none")
         return response
 
 
 def install_middleware(app: FastAPI) -> None:
-    """Подключает middleware backend-приложения."""
+    """Подключает middleware backend-приложения.
+
+    Регистрирует GZip-сжатие, CORS-настройки, middleware security headers
+    и middleware контекста запроса. Порядок подключения учитывает цепочку
+    выполнения middleware FastAPI.
+
+    Args:
+        app: Экземпляр FastAPI-приложения, к которому подключаются middleware.
+
+    Returns:
+        None.
+    """
 
     app.add_middleware(GZipMiddleware, minimum_size=1024)
     app.add_middleware(
@@ -127,7 +222,12 @@ def install_middleware(app: FastAPI) -> None:
         allow_origins=list(DEFAULT_CORS_ORIGINS),
         allow_credentials=True,
         allow_methods=["*"],
-        allow_headers=["*", REQUEST_ID_HEADER, CORRELATION_ID_HEADER, USER_AGENT_HEADER],
+        allow_headers=[
+            "*",
+            REQUEST_ID_HEADER,
+            CORRELATION_ID_HEADER,
+            USER_AGENT_HEADER,
+        ],
         expose_headers=[REQUEST_ID_HEADER, CORRELATION_ID_HEADER],
     )
     app.add_middleware(SecurityHeadersMiddleware)

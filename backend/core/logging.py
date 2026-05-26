@@ -1,3 +1,18 @@
+"""Настройка логирования приложения.
+
+Модуль содержит форматтеры логов, функцию построения конфигурации logging
+в формате `dictConfig`, настройку логирования приложения, получение логгеров
+с единым префиксом, приглушение шумных сторонних логгеров и резервную
+обработку неперехваченных исключений.
+
+Поддерживаются два формата логов: человекочитаемый plain-формат для локальной
+разработки и JSON-формат для структурированного логирования.
+
+Attributes:
+    JsonFormatter: Форматтер логов в JSON.
+    PlainFormatter: Человекочитаемый форматтер логов.
+"""
+
 from __future__ import annotations
 
 import json
@@ -16,9 +31,30 @@ if TYPE_CHECKING:
 
 
 class JsonFormatter(logging.Formatter):
-    """Простой форматтер журналов в JSON."""
+    """Простой форматтер журналов в JSON.
+
+    Преобразует объект `logging.LogRecord` в JSON-строку, включая базовые поля
+    записи, сведения об исключении, stack trace и дополнительные поля,
+    переданные через `extra`.
+
+    Methods:
+        format: Формирует JSON-представление записи лога.
+    """
 
     def format(self, record: logging.LogRecord) -> str:
+        """Форматирует запись лога в JSON-строку.
+
+        Собирает стандартные поля записи лога, добавляет данные об исключении
+        и stack trace при их наличии, а также переносит пользовательские поля
+        `extra` в отдельный блок.
+
+        Args:
+            record: Запись лога, которую необходимо отформатировать.
+
+        Returns:
+            JSON-строка с данными записи лога.
+        """
+
         payload: dict[str, Any] = {
             "timestamp": datetime.fromtimestamp(
                 record.created, timezone.utc
@@ -74,8 +110,13 @@ class JsonFormatter(logging.Formatter):
 
 
 class PlainFormatter(logging.Formatter):
-    """
-    Форматтер, удобный для чтения человеком, для локальной разработки.
+    """Форматтер логов для чтения человеком.
+
+    Используется для локальной разработки и выводит время, уровень,
+    имя логгера, модуль, строку и сообщение в компактном текстовом формате.
+
+    Attributes:
+        default_format: Формат строки лога по умолчанию.
     """
 
     default_format = (
@@ -83,6 +124,15 @@ class PlainFormatter(logging.Formatter):
     )
 
     def __init__(self) -> None:
+        """Инициализирует plain-форматтер логов.
+
+        Настраивает формат сообщения и формат даты, используемые стандартным
+        `logging.Formatter`.
+
+        Returns:
+            None.
+        """
+
         super().__init__(
             fmt=self.default_format,
             datefmt="%Y-%m-%d %H:%M:%S",
@@ -90,8 +140,18 @@ class PlainFormatter(logging.Formatter):
 
 
 def build_logging_config(settings: LoggingSettings) -> dict[str, Any]:
-    """
-    Создать конфигурацию логирования, совместимую с dictConfig.
+    """Создаёт конфигурацию логирования для `dictConfig`.
+
+    Формирует словарь конфигурации logging с console-handler и, при включённой
+    файловой записи, file-handler на основе `RotatingFileHandler`. Выбирает
+    JSON- или plain-форматтер в зависимости от настроек.
+
+    Args:
+        settings: Настройки логирования приложения.
+
+    Returns:
+        Словарь конфигурации логирования, совместимый с
+        `logging.config.dictConfig`.
     """
 
     formatter_name = "json" if settings.log_json else "plain"
@@ -145,12 +205,19 @@ def build_logging_config(settings: LoggingSettings) -> dict[str, Any]:
 
 
 def setup_logging(settings: LoggingSettings) -> None:
-    """
-    Настроить логирование приложения.
+    """Настраивает логирование приложения.
 
-    Должно вызываться один раз при запуске приложения, желательно до
-    создания приложения FastAPI.
+    Строит конфигурацию логирования, применяет её через `dictConfig` и пишет
+    debug-сообщение о применённых параметрах. Функцию следует вызывать один раз
+    при запуске backend-приложения.
+
+    Args:
+        settings: Настройки логирования приложения.
+
+    Returns:
+        None.
     """
+
     config = build_logging_config(settings)
     logging.config.dictConfig(config)
 
@@ -166,12 +233,19 @@ def setup_logging(settings: LoggingSettings) -> None:
 
 
 def get_logger(name: str) -> logging.Logger:
-    """
-    Вернуть логгер приложения.
+    """Возвращает логгер приложения.
 
-    Рекомендуемое использование:
-        logger = get_logger(__name__)
+    Создаёт или получает логгер с единым префиксом `localcloud`. Если имя уже
+    начинается с `localcloud`, оно используется без изменений. Если имя пустое,
+    возвращается корневой логгер приложения.
+
+    Args:
+        name: Имя логгера или имя модуля.
+
+    Returns:
+        Логгер приложения.
     """
+
     if not name:
         return logging.getLogger("localcloud")
 
@@ -185,14 +259,22 @@ def silence_noisy_loggers(
     logger_names: Iterable[str] | None = None,
     level: int | str = logging.WARNING,
 ) -> None:
-    """
-    Уменьшить шум от сторонних библиотек.
+    """Уменьшает шум от сторонних библиотек.
+
+    Устанавливает указанный уровень логирования для переданных логгеров.
+    Если список имён не передан, используются стандартные шумные логгеры
+    из `LoggingConstants.DEFAULT_NOISY_LOGGERS`.
 
     Args:
-        logger_names: Имена логгеров, которые нужно приглушить. Если None,
-            используются стандартные «шумные» логгеры.
-        level: Уровень логирования, который нужно установить для этих логгеров.
+        logger_names: Имена логгеров, которые нужно приглушить. Если `None`,
+            используются стандартные шумные логгеры.
+        level: Уровень логирования, который нужно установить для указанных
+            логгеров.
+
+    Returns:
+        None.
     """
+
     names = (
         LoggingConstants.DEFAULT_NOISY_LOGGERS if logger_names is None else logger_names
     )
@@ -202,11 +284,17 @@ def silence_noisy_loggers(
 
 
 def configure_root_exception_logging() -> None:
-    """
-    Настроить резервный обработчик для неперехваченных исключений.
+    """Настраивает резервное логирование неперехваченных исключений.
 
-    Это не заменяет обработчики исключений FastAPI. Он только помогает логировать
-    неожиданные исключения, вышедшие за пределы приложения.
+    Устанавливает пользовательский `sys.excepthook`, который записывает
+    неперехваченные исключения в критический лог. Исключение `KeyboardInterrupt`
+    передаётся стандартному обработчику Python.
+
+    Этот обработчик не заменяет обработчики исключений FastAPI и нужен только
+    для ошибок, вышедших за пределы приложения.
+
+    Returns:
+        None.
     """
 
     def handle_exception(
@@ -214,6 +302,17 @@ def configure_root_exception_logging() -> None:
         exc_value: BaseException,
         exc_traceback: Any,
     ) -> None:
+        """Логирует неперехваченное исключение.
+
+        Args:
+            exc_type: Тип неперехваченного исключения.
+            exc_value: Экземпляр неперехваченного исключения.
+            exc_traceback: Traceback неперехваченного исключения.
+
+        Returns:
+            None.
+        """
+
         if issubclass(exc_type, KeyboardInterrupt):
             sys.__excepthook__(exc_type, exc_value, exc_traceback)
             return

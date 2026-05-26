@@ -14,6 +14,7 @@ from database.exceptions import (
     EntityNotFoundError,
     InvalidQueryError,
 )
+from database.models.enums import TrashItemStatus
 from database.models.filesystem import TrashItem
 from database.repositories.base import BaseRepository
 from database.repositories.nodes import FileSystemNodeRepository
@@ -291,16 +292,6 @@ class TrashItemRepository(BaseRepository[TrashItem]):
         node = await self.nodes.get_required_by_id(node_id)
 
         existing_trash_item = await self.get_by_node_id(node_id)
-
-        if existing_trash_item is not None:
-            raise DuplicateEntityError(
-                "TrashItem",
-                field="node_id",
-                value=node_id,
-                repository=self.repository_name,
-                message="Для указанного узла уже существует элемент корзины.",
-            )
-
         resolved_owner_id = owner_id or node.owner_id
 
         if resolved_owner_id != node.owner_id:
@@ -321,6 +312,49 @@ class TrashItemRepository(BaseRepository[TrashItem]):
             deleted_at=moment,
             expires_at=expires_at,
         )
+
+        if existing_trash_item is not None:
+            if existing_trash_item.is_in_trash and existing_trash_item.purged_at is None:
+                raise DuplicateEntityError(
+                    "TrashItem",
+                    field="node_id",
+                    value=node_id,
+                    repository=self.repository_name,
+                    message="Для указанного узла уже существует элемент корзины.",
+                )
+
+            existing_trash_item.owner_id = resolved_owner_id
+            existing_trash_item.deleted_by = deleted_by
+            existing_trash_item.original_parent_id = (
+                original_parent_id if original_parent_id is not None else node.parent_id
+            )
+            existing_trash_item.original_path = (
+                self._validate_original_path(original_path)
+                if original_path is not None
+                else self._validate_original_path(node.path)
+            )
+            existing_trash_item.deleted_at = moment
+            existing_trash_item.expires_at = expires_at
+            existing_trash_item.restore_available = restore_available
+            existing_trash_item.purged_at = None
+            existing_trash_item.status = TrashItemStatus.IN_TRASH
+
+            if soft_delete_node and not node.is_deleted:
+                await self.nodes.soft_delete_node(
+                    node_id=node.id,
+                    deleted_by=deleted_by,
+                    deleted_at=moment,
+                    recursive=recursive_soft_delete,
+                    flush=False,
+                )
+
+            if flush:
+                await self.flush()
+
+            if refresh:
+                await self.refresh(existing_trash_item)
+
+            return existing_trash_item
 
         trash_item = TrashItem(
             node_id=node.id,
@@ -717,7 +751,7 @@ class TrashItemRepository(BaseRepository[TrashItem]):
                 check_conflict=True,
             )
 
-        trash_item.restore_available = False
+        trash_item.restore()
 
         if flush:
             await self.flush()
@@ -764,8 +798,7 @@ class TrashItemRepository(BaseRepository[TrashItem]):
             node_id=node_id,
         )
 
-        trash_item.restore_available = False
-        trash_item.purged_at = purged_at or self._utc_now()
+        trash_item.purge(purged_at=purged_at)
 
         if purge_node:
             await self.nodes.mark_purged(
@@ -1786,3 +1819,5 @@ class TrashItemRepository(BaseRepository[TrashItem]):
                 reason=str(exc),
                 cause=exc,
             ) from exc
+
+

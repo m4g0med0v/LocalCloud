@@ -1,3 +1,19 @@
+"""Обработчики исключений приложения.
+
+Модуль содержит регистрацию и реализацию единых обработчиков исключений
+FastAPI. Обработчики преобразуют сервисные, инфраструктурные, security,
+валидационные, HTTP- и непредвиденные ошибки в стандартизированный JSON-формат
+API.
+
+Для трассировки ошибок в ответ добавляется идентификатор запроса, если он
+доступен в контексте запроса, состоянии запроса или HTTP-заголовке
+`X-Request-ID`.
+
+Attributes:
+    __all__: Список публично экспортируемых функций регистрации и обработчиков
+        исключений.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -21,11 +37,29 @@ from security import (
     PermissionDeniedError,
 )
 from services.exceptions import ServiceError
-from storage import StorageConnectionError, StorageError, StorageHealthCheckError, StorageTimeoutError
+from storage import (
+    StorageConnectionError,
+    StorageError,
+    StorageHealthCheckError,
+    StorageTimeoutError,
+)
 
 
 def register_exception_handlers(app: FastAPI) -> None:
-    """Регистрирует единые обработчики исключений FastAPI."""
+    """Регистрирует единые обработчики исключений FastAPI.
+
+    Подключает к приложению обработчики для сервисных ошибок, ошибок базы
+    данных, объектного хранилища, cookie- и JWT-аутентификации, ошибок проверки
+    прав доступа, ошибок валидации, стандартных HTTP-исключений и
+    непредвиденных исключений.
+
+    Args:
+        app: Экземпляр FastAPI-приложения, в котором регистрируются
+            обработчики исключений.
+
+    Returns:
+        None.
+    """
 
     app.add_exception_handler(ServiceError, cast(Any, service_error_handler))
     app.add_exception_handler(DatabaseError, cast(Any, database_error_handler))
@@ -53,14 +87,37 @@ def register_exception_handlers(app: FastAPI) -> None:
 
 
 async def service_error_handler(request: Request, exc: ServiceError) -> JSONResponse:
-    """Возвращает сервисную ошибку в стандартизированном формате."""
+    """Возвращает сервисную ошибку в стандартизированном формате.
+
+    Преобразует исключение сервисного слоя в модель ответа об ошибке и
+    возвращает JSON-ответ со статусом, заданным самим исключением.
+
+    Args:
+        request: Текущий HTTP-запрос.
+        exc: Исключение сервисного слоя.
+
+    Returns:
+        JSON-ответ с описанием сервисной ошибки.
+    """
 
     payload = exc.to_error_response(request_id=_get_request_id(request))
     return _json_response(payload.model_dump(mode="json"), status_code=exc.status_code)
 
 
 async def database_error_handler(request: Request, exc: DatabaseError) -> JSONResponse:
-    """Возвращает ошибку базы данных."""
+    """Возвращает ошибку базы данных.
+
+    Формирует стандартизированный ответ для ошибок базы данных. Ошибки
+    подключения и таймаута возвращаются как временная недоступность сервиса,
+    остальные ошибки базы данных возвращаются как внутренняя ошибка сервера.
+
+    Args:
+        request: Текущий HTTP-запрос.
+        exc: Исключение базы данных.
+
+    Returns:
+        JSON-ответ с описанием ошибки базы данных.
+    """
 
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     if not isinstance(exc, DatabaseConnectionError | DatabaseTimeoutError):
@@ -76,10 +133,25 @@ async def database_error_handler(request: Request, exc: DatabaseError) -> JSONRe
 
 
 async def storage_error_handler(request: Request, exc: StorageError) -> JSONResponse:
-    """Возвращает ошибку объектного хранилища."""
+    """Возвращает ошибку объектного хранилища.
+
+    Формирует стандартизированный ответ для ошибок хранилища. Ошибки
+    подключения, таймаута и health-check возвращаются как временная
+    недоступность сервиса, остальные ошибки хранилища возвращаются как
+    внутренняя ошибка сервера.
+
+    Args:
+        request: Текущий HTTP-запрос.
+        exc: Исключение объектного хранилища.
+
+    Returns:
+        JSON-ответ с описанием ошибки хранилища.
+    """
 
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-    if not isinstance(exc, StorageConnectionError | StorageTimeoutError | StorageHealthCheckError):
+    if not isinstance(
+        exc, StorageConnectionError | StorageTimeoutError | StorageHealthCheckError
+    ):
         status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
 
     payload = ErrorResponse(
@@ -92,7 +164,18 @@ async def storage_error_handler(request: Request, exc: StorageError) -> JSONResp
 
 
 async def cookie_error_handler(request: Request, exc: CookieError) -> JSONResponse:
-    """Возвращает ошибку cookie-аутентификации."""
+    """Возвращает ошибку cookie-аутентификации.
+
+    Преобразует ошибку работы с cookie в стандартизированный ответ API
+    со статусом `401 Unauthorized`.
+
+    Args:
+        request: Текущий HTTP-запрос.
+        exc: Исключение cookie-аутентификации.
+
+    Returns:
+        JSON-ответ с описанием ошибки cookie-аутентификации.
+    """
 
     payload = ErrorResponse(
         error=exc.__class__.__name__,
@@ -100,14 +183,30 @@ async def cookie_error_handler(request: Request, exc: CookieError) -> JSONRespon
         details=exc.details or None,
         request_id=_get_request_id(request),
     )
-    return _json_response(payload.model_dump(mode="json"), status_code=status.HTTP_401_UNAUTHORIZED)
+    return _json_response(
+        payload.model_dump(mode="json"), status_code=status.HTTP_401_UNAUTHORIZED
+    )
 
 
 async def jwt_error_handler(request: Request, exc: JwtTokenError) -> JSONResponse:
-    """Возвращает ошибку JWT-аутентификации."""
+    """Возвращает ошибку JWT-аутентификации.
+
+    Преобразует ошибки JWT-токена, включая истечение срока действия,
+    некорректные claims и неверный тип токена, в стандартизированный ответ API
+    со статусом `401 Unauthorized`.
+
+    Args:
+        request: Текущий HTTP-запрос.
+        exc: Исключение JWT-аутентификации.
+
+    Returns:
+        JSON-ответ с описанием ошибки JWT-аутентификации.
+    """
 
     status_code = status.HTTP_401_UNAUTHORIZED
-    if isinstance(exc, JwtInvalidClaimsError | JwtInvalidTokenTypeError | JwtExpiredError):
+    if isinstance(
+        exc, JwtInvalidClaimsError | JwtInvalidTokenTypeError | JwtExpiredError
+    ):
         status_code = status.HTTP_401_UNAUTHORIZED
 
     payload = ErrorResponse(
@@ -123,7 +222,18 @@ async def permission_denied_handler(
     request: Request,
     exc: PermissionDeniedError,
 ) -> JSONResponse:
-    """Возвращает ошибку отказа в доступе."""
+    """Возвращает ошибку отказа в доступе.
+
+    Формирует стандартизированный ответ для случая, когда пользователю
+    запрещено выполнение операции.
+
+    Args:
+        request: Текущий HTTP-запрос.
+        exc: Исключение отказа в доступе.
+
+    Returns:
+        JSON-ответ с описанием ошибки доступа.
+    """
 
     payload = ErrorResponse(
         error=exc.__class__.__name__,
@@ -131,14 +241,27 @@ async def permission_denied_handler(
         details=exc.details or None,
         request_id=_get_request_id(request),
     )
-    return _json_response(payload.model_dump(mode="json"), status_code=status.HTTP_403_FORBIDDEN)
+    return _json_response(
+        payload.model_dump(mode="json"), status_code=status.HTTP_403_FORBIDDEN
+    )
 
 
 async def permission_check_handler(
     request: Request,
     exc: PermissionCheckError,
 ) -> JSONResponse:
-    """Возвращает ошибку проверки прав доступа."""
+    """Возвращает ошибку проверки прав доступа.
+
+    Формирует стандартизированный ответ для ошибок, возникающих во время
+    проверки прав доступа.
+
+    Args:
+        request: Текущий HTTP-запрос.
+        exc: Исключение проверки прав доступа.
+
+    Returns:
+        JSON-ответ с описанием ошибки проверки прав.
+    """
 
     payload = ErrorResponse(
         error=exc.__class__.__name__,
@@ -146,14 +269,27 @@ async def permission_check_handler(
         details=exc.details or None,
         request_id=_get_request_id(request),
     )
-    return _json_response(payload.model_dump(mode="json"), status_code=status.HTTP_403_FORBIDDEN)
+    return _json_response(
+        payload.model_dump(mode="json"), status_code=status.HTTP_403_FORBIDDEN
+    )
 
 
 async def request_validation_error_handler(
     request: Request,
     exc: RequestValidationError,
 ) -> JSONResponse:
-    """Возвращает ошибки валидации входного HTTP-запроса."""
+    """Возвращает ошибки валидации входного HTTP-запроса.
+
+    Преобразует ошибки валидации FastAPI в список стандартизированных элементов
+    ошибок и возвращает ответ со статусом `422 Unprocessable Entity`.
+
+    Args:
+        request: Текущий HTTP-запрос.
+        exc: Исключение валидации входного запроса FastAPI.
+
+    Returns:
+        JSON-ответ со списком ошибок валидации.
+    """
 
     payload = ValidationErrorResponse(
         errors=_build_validation_items(exc.errors()),
@@ -169,7 +305,18 @@ async def pydantic_validation_error_handler(
     request: Request,
     exc: ValidationError,
 ) -> JSONResponse:
-    """Возвращает ошибки валидации Pydantic."""
+    """Возвращает ошибки валидации Pydantic.
+
+    Преобразует ошибки Pydantic в список стандартизированных элементов ошибок
+    и возвращает ответ со статусом `422 Unprocessable Entity`.
+
+    Args:
+        request: Текущий HTTP-запрос.
+        exc: Исключение валидации Pydantic.
+
+    Returns:
+        JSON-ответ со списком ошибок валидации.
+    """
 
     payload = ValidationErrorResponse(
         errors=_build_validation_items(exc.errors()),
@@ -185,7 +332,18 @@ async def http_exception_handler(
     request: Request,
     exc: StarletteHTTPException,
 ) -> JSONResponse:
-    """Нормализует HTTPException в общий формат ошибок API."""
+    """Нормализует HTTPException в общий формат ошибок API.
+
+    Преобразует стандартное HTTP-исключение Starlette в модель `ErrorResponse`,
+    сохраняя HTTP-статус и заголовки исключения.
+
+    Args:
+        request: Текущий HTTP-запрос.
+        exc: HTTP-исключение Starlette.
+
+    Returns:
+        JSON-ответ с нормализованным описанием HTTP-ошибки.
+    """
 
     payload = ErrorResponse(
         error="HTTPException",
@@ -204,7 +362,18 @@ async def unexpected_exception_handler(
     request: Request,
     exc: Exception,
 ) -> JSONResponse:
-    """Возвращает ответ для непредвиденных ошибок."""
+    """Возвращает ответ для непредвиденных ошибок.
+
+    Формирует стандартизированный ответ для исключений, которые не были
+    обработаны специализированными обработчиками.
+
+    Args:
+        request: Текущий HTTP-запрос.
+        exc: Непредвиденное исключение.
+
+    Returns:
+        JSON-ответ с описанием внутренней ошибки сервера.
+    """
 
     payload = ErrorResponse(
         error=exc.__class__.__name__,
@@ -221,6 +390,18 @@ async def unexpected_exception_handler(
 def _build_validation_items(
     errors: Sequence[Mapping[str, Any] | Any],
 ) -> list[ValidationErrorItem]:
+    """Преобразует ошибки валидации в элементы ответа API.
+
+    Извлекает путь поля, сообщение, код ошибки и исходное значение из элементов
+    ошибок FastAPI или Pydantic.
+
+    Args:
+        errors: Последовательность ошибок валидации.
+
+    Returns:
+        Список стандартизированных элементов ошибок валидации.
+    """
+
     items: list[ValidationErrorItem] = []
     for item in errors:
         error_item = cast(Mapping[str, Any], item)
@@ -238,6 +419,20 @@ def _build_validation_items(
 
 
 def _http_exception_message(detail: Any) -> str:
+    """Извлекает сообщение HTTP-ошибки.
+
+    Получает человекочитаемое сообщение из значения `detail`. Для строк
+    возвращает нормализованное значение, для словарей пытается использовать
+    поле `message`. Если сообщение определить не удалось, возвращает
+    стандартный текст HTTP-ошибки.
+
+    Args:
+        detail: Детали HTTP-исключения.
+
+    Returns:
+        Сообщение HTTP-ошибки.
+    """
+
     if isinstance(detail, str):
         normalized_detail = detail.strip()
         if normalized_detail:
@@ -252,12 +447,37 @@ def _http_exception_message(detail: Any) -> str:
 
 
 def _http_exception_details(detail: Any) -> dict[str, Any] | None:
+    """Извлекает дополнительные детали HTTP-ошибки.
+
+    Возвращает `detail` как словарь, если он уже имеет словарную структуру.
+    Для остальных типов деталей возвращает `None`.
+
+    Args:
+        detail: Детали HTTP-исключения.
+
+    Returns:
+        Словарь с деталями HTTP-ошибки или `None`.
+    """
+
     if isinstance(detail, dict):
         return detail
     return None
 
 
 def _get_request_id(request: Request) -> str | None:
+    """Извлекает идентификатор запроса.
+
+    Пытается получить идентификатор запроса из контекста запроса,
+    затем из `request.state.request_id`, затем из HTTP-заголовка
+    `X-Request-ID`.
+
+    Args:
+        request: Текущий HTTP-запрос.
+
+    Returns:
+        Идентификатор запроса или `None`, если его не удалось определить.
+    """
+
     context = getattr(request.state, "request_context", None)
     request_id = getattr(context, "request_id", None)
     if isinstance(request_id, str) and request_id.strip():
@@ -276,6 +496,18 @@ def _get_request_id(request: Request) -> str | None:
 
 
 def _normalize_optional_str(value: Any) -> str | None:
+    """Нормализует необязательное строковое значение.
+
+    Преобразует значение в строку, удаляет пробельные символы по краям и
+    возвращает `None`, если результат пустой.
+
+    Args:
+        value: Исходное значение.
+
+    Returns:
+        Нормализованная строка или `None`.
+    """
+
     if value is None:
         return None
 
@@ -289,6 +521,20 @@ def _json_response(
     status_code: int,
     headers: Mapping[str, str] | None = None,
 ) -> JSONResponse:
+    """Создаёт JSON-ответ FastAPI.
+
+    Нормализует заголовки ответа и создаёт объект `JSONResponse` с указанным
+    содержимым и HTTP-статусом.
+
+    Args:
+        content: JSON-совместимое содержимое ответа.
+        status_code: HTTP-статус ответа.
+        headers: Дополнительные HTTP-заголовки ответа.
+
+    Returns:
+        JSON-ответ FastAPI.
+    """
+
     normalized_headers = dict(headers) if headers is not None else None
     return JSONResponse(
         content=content,

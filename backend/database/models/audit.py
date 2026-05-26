@@ -1,3 +1,17 @@
+"""Модель журнала аудита.
+
+Модуль содержит SQLAlchemy-модель `AuditLog`, которая описывает события аудита
+в системе LocalCloud. Записи аудита используются для отслеживания действий
+пользователей, администраторов, фоновых задач и системных процессов.
+
+Модель хранит сведения о пользователе, действии, результате, затронутой
+сущности, HTTP-контексте, IP-адресе, User-Agent, сообщении, коде ошибки
+и дополнительных структурированных metadata.
+
+Attributes:
+    AuditLog: SQLAlchemy-модель записи журнала аудита.
+"""
+
 from __future__ import annotations
 
 import uuid
@@ -18,20 +32,34 @@ if TYPE_CHECKING:
 class AuditLog(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
     """Журнал аудита.
 
-    Представляет одно событие аудита в системе.
+    Представляет одно событие аудита в системе. События аудита используются
+    для отслеживания действий аутентификации, регистрации, операций с файлами
+    и папками, изменений разрешений, действий с публичными ссылками, событий
+    квот, фоновых задач, проверок целостности хранилища, подозрительной
+    активности и отказов доступа.
 
-    События аудита используются для отслеживания:
-        - действий аутентификации;
-        - одобрения и отклонения регистрации;
-        - операций с файлами и папками;
-        - изменений разрешений;
-        - действий с публичными ссылками;
-        - событий, связанных с квотами;
-        - событий фоновых задач;
-        - событий целостности хранилища;
-        - подозрительной активности и отказов доступа.
+    Attributes:
+        user_id: Пользователь, выполнивший действие. `None` означает системное
+            действие.
+        action: Тип действия, выполненного в системе.
+        result: Результат выполнения действия.
+        entity_type: Тип сущности, затронутой действием.
+        entity_id: Идентификатор затронутой сущности.
+        resource_type: Нормализованный тип ресурса для фильтрации событий
+            аудита.
+        request_id: Идентификатор HTTP-запроса, в рамках которого создано
+            событие.
+        correlation_id: Идентификатор корреляции для связывания нескольких
+            событий.
+        ip_address: IP-адрес, с которого было выполнено действие.
+        user_agent: User-Agent клиента, выполнившего действие.
+        message: Краткое человекочитаемое описание события.
+        error_code: Машиночитаемый код ошибки, если действие завершилось
+            неуспешно.
+        metadata_: Дополнительные структурированные данные события аудита.
+        user: Пользователь, связанный с событием аудита.
 
-    Таблица:
+    Table:
         audit_logs
     """
 
@@ -407,49 +435,87 @@ class AuditLog(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
 
     @property
     def is_system_action(self) -> bool:
-        """Возвращает True, если событие аудита было создано системой."""
+        """Проверяет, создано ли событие системой.
+
+        Returns:
+            `True`, если событие аудита не связано с конкретным пользователем,
+            иначе `False`.
+        """
 
         return self.user_id is None
 
     @property
     def is_user_action(self) -> bool:
-        """Возвращает True, если событие аудита связано с пользователем."""
+        """Проверяет, связано ли событие с пользователем.
+
+        Returns:
+            `True`, если у события указан пользователь, иначе `False`.
+        """
 
         return self.user_id is not None
 
     @property
     def has_entity(self) -> bool:
-        """Возвращает True, если событие аудита связано с конкретной сущностью."""
+        """Проверяет связь события с конкретной сущностью.
+
+        Returns:
+            `True`, если у события указаны тип и идентификатор сущности,
+            иначе `False`.
+        """
 
         return self.entity_type is not None and self.entity_id is not None
 
     @property
     def is_success(self) -> bool:
-        """Возвращает True, если действие завершилось успешно."""
+        """Проверяет, завершилось ли действие успешно.
+
+        Returns:
+            `True`, если результат события равен `AuditResult.SUCCESS`,
+            иначе `False`.
+        """
 
         return self.result == AuditResult.SUCCESS
 
     @property
     def is_failure(self) -> bool:
-        """Возвращает True, если действие завершилось ошибкой."""
+        """Проверяет, завершилось ли действие ошибкой.
+
+        Returns:
+            `True`, если результат события равен `AuditResult.FAILURE`,
+            иначе `False`.
+        """
 
         return self.result == AuditResult.FAILURE
 
     @property
     def is_denied(self) -> bool:
-        """Возвращает True, если действие было запрещено."""
+        """Проверяет, было ли действие запрещено.
+
+        Returns:
+            `True`, если результат события равен `AuditResult.DENIED`,
+            иначе `False`.
+        """
 
         return self.result == AuditResult.DENIED
 
     @property
     def is_warning(self) -> bool:
-        """Возвращает True, если событие является предупреждением."""
+        """Проверяет, является ли событие предупреждением.
+
+        Returns:
+            `True`, если результат события равен `AuditResult.WARNING`,
+            иначе `False`.
+        """
 
         return self.result == AuditResult.WARNING
 
     @property
     def has_metadata(self) -> bool:
-        """Возвращает True, если у события есть дополнительные metadata."""
+        """Проверяет наличие дополнительных metadata.
+
+        Returns:
+            `True`, если у события есть непустые metadata, иначе `False`.
+        """
 
         return bool(self.metadata_)
 
@@ -462,6 +528,9 @@ class AuditLog(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
 
         Args:
             metadata: Новые дополнительные структурированные данные события.
+
+        Returns:
+            None.
         """
 
         self.metadata_ = metadata
@@ -469,9 +538,15 @@ class AuditLog(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
     def add_metadata(self, key: str, value: Any) -> None:
         """Добавляет одно значение в metadata.
 
+        Инициализирует словарь metadata, если он отсутствует, и добавляет
+        переданное значение по указанному ключу.
+
         Args:
             key: Ключ metadata.
             value: Значение metadata.
+
+        Returns:
+            None.
 
         Raises:
             ValueError: Если ключ metadata не передан.
@@ -491,8 +566,14 @@ class AuditLog(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
     def add_metadata_many(self, values: dict[str, Any]) -> None:
         """Добавляет несколько значений в metadata.
 
+        Инициализирует словарь metadata, если он отсутствует, и обновляет его
+        переданными значениями.
+
         Args:
             values: Значения metadata для добавления.
+
+        Returns:
+            None.
         """
 
         if self.metadata_ is None:
@@ -511,9 +592,15 @@ class AuditLog(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
     ) -> None:
         """Помечает событие как неуспешное.
 
+        Устанавливает результат события `AuditResult.FAILURE`, а также
+        обновляет сообщение и машиночитаемый код ошибки.
+
         Args:
             message: Сообщение об ошибке.
             error_code: Машиночитаемый код ошибки.
+
+        Returns:
+            None.
         """
 
         self.result = AuditResult.FAILURE
@@ -523,8 +610,14 @@ class AuditLog(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
     def mark_denied(self, message: str | None = None) -> None:
         """Помечает событие как отказ доступа.
 
+        Устанавливает результат события `AuditResult.DENIED` и обновляет
+        сообщение события.
+
         Args:
             message: Сообщение об отказе в доступе.
+
+        Returns:
+            None.
         """
 
         self.result = AuditResult.DENIED
@@ -533,14 +626,26 @@ class AuditLog(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
     def mark_warning(self, message: str | None = None) -> None:
         """Помечает событие как предупреждение.
 
+        Устанавливает результат события `AuditResult.WARNING` и обновляет
+        сообщение события.
+
         Args:
             message: Сообщение с описанием предупреждения.
+
+        Returns:
+            None.
         """
 
         self.result = AuditResult.WARNING
         self.message = message
 
     def __repr__(self) -> str:
+        """Возвращает строковое представление записи аудита.
+
+        Returns:
+            Строковое представление `AuditLog` с основными полями события.
+        """
+
         return (
             f"<AuditLog("
             f"id={self.id}, "

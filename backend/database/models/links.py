@@ -1,3 +1,15 @@
+"""ORM-модель публичной ссылки.
+
+Модуль содержит SQLAlchemy-модель `PublicLink`, которая описывает публичный
+доступ к файлам и папкам LocalCloud. Публичная ссылка может предоставлять
+права просмотра, скачивания или загрузки, а также поддерживает пароль,
+срок действия, лимит скачиваний, отзыв, временное отключение и счётчики
+использования.
+
+Attributes:
+    PublicLink: ORM-модель публичной ссылки.
+"""
+
 from __future__ import annotations
 
 import uuid
@@ -32,7 +44,10 @@ if TYPE_CHECKING:
 class PublicLink(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
     """Публичная ссылка.
 
-    Представляет публичную ссылку, созданную для файла или папки.
+    Представляет публичную ссылку, созданную для файла или папки. Модель
+    хранит токен доступа, тип разрешения, статус, срок действия, пароль,
+    лимиты скачивания, счётчики просмотров, скачиваний и загрузок, а также
+    сведения об отзыве ссылки.
 
     Основные сценарии использования:
         - предоставление публичного доступа к файлу или папке;
@@ -42,7 +57,35 @@ class PublicLink(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
         - отзыв или временное отключение ссылки;
         - учёт просмотров, скачиваний и загрузок.
 
-    Таблица:
+    Attributes:
+        node_id: Узел файловой системы, доступ к которому предоставлен ссылкой.
+        created_by: Пользователь, создавший публичную ссылку.
+        token: Уникальный публичный токен ссылки.
+        password_hash: Хэш пароля публичной ссылки. Открытый пароль
+            не хранится.
+        permission_type: Тип доступа, предоставляемый публичной ссылкой.
+        status: Статус публичной ссылки.
+        expires_at: Дата и время истечения срока действия публичной ссылки.
+        max_downloads: Максимальное количество скачиваний. `None` означает
+            отсутствие лимита.
+        download_count: Текущее количество скачиваний по публичной ссылке.
+        view_count: Количество просмотров публичной ссылки.
+        upload_count: Количество загрузок через публичную ссылку.
+        is_active: Признак активности публичной ссылки.
+        revoked_at: Дата и время отзыва публичной ссылки.
+        revoked_by: Пользователь, отозвавший публичную ссылку.
+        revoke_reason: Причина отзыва публичной ссылки.
+        last_accessed_at: Дата и время последнего обращения к публичной ссылке.
+        last_downloaded_at: Дата и время последнего скачивания по публичной
+            ссылке.
+        last_uploaded_at: Дата и время последней загрузки через публичную
+            ссылку.
+        description: Необязательное описание публичной ссылки.
+        node: Узел файловой системы, связанный с публичной ссылкой.
+        creator: Пользователь, создавший публичную ссылку.
+        revoker: Пользователь, отозвавший публичную ссылку.
+
+    Table:
         public_links
     """
 
@@ -251,31 +294,55 @@ class PublicLink(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
 
     @property
     def is_revoked(self) -> bool:
-        """Возвращает True, если публичная ссылка была отозвана вручную."""
+        """Проверяет, была ли публичная ссылка отозвана вручную.
+
+        Returns:
+            `True`, если у ссылки задано время отзыва или статус равен
+            `PublicLinkStatus.REVOKED`, иначе `False`.
+        """
 
         return self.revoked_at is not None or self.status == PublicLinkStatus.REVOKED
 
     @property
     def is_disabled(self) -> bool:
-        """Возвращает True, если публичная ссылка отключена."""
+        """Проверяет, отключена ли публичная ссылка.
+
+        Returns:
+            `True`, если статус ссылки равен `PublicLinkStatus.DISABLED`
+            или признак активности снят, иначе `False`.
+        """
 
         return self.status == PublicLinkStatus.DISABLED or not self.is_active
 
     @property
     def is_password_protected(self) -> bool:
-        """Возвращает True, если публичная ссылка защищена паролем."""
+        """Проверяет, защищена ли публичная ссылка паролем.
+
+        Returns:
+            `True`, если у ссылки сохранён хэш пароля, иначе `False`.
+        """
 
         return self.password_hash is not None
 
     @property
     def has_download_limit(self) -> bool:
-        """Возвращает True, если у ссылки задан лимит скачиваний."""
+        """Проверяет наличие лимита скачиваний.
+
+        Returns:
+            `True`, если у ссылки задан максимальный лимит скачиваний,
+            иначе `False`.
+        """
 
         return self.max_downloads is not None
 
     @property
     def is_download_limit_reached(self) -> bool:
-        """Возвращает True, если количество скачиваний достигло лимита."""
+        """Проверяет, достигнут ли лимит скачиваний.
+
+        Returns:
+            `True`, если лимит задан и количество скачиваний больше или равно
+            лимиту, иначе `False`.
+        """
 
         return (
             self.max_downloads is not None and self.download_count >= self.max_downloads
@@ -283,7 +350,12 @@ class PublicLink(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
 
     @property
     def allows_view(self) -> bool:
-        """Возвращает True, если ссылка позволяет просматривать данные."""
+        """Проверяет, позволяет ли ссылка просматривать данные.
+
+        Returns:
+            `True`, если тип доступа публичной ссылки допускает просмотр,
+            иначе `False`.
+        """
 
         return self.permission_type in {
             PublicLinkPermissionType.VIEW,
@@ -292,13 +364,23 @@ class PublicLink(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
 
     @property
     def allows_download(self) -> bool:
-        """Возвращает True, если ссылка позволяет скачивать."""
+        """Проверяет, позволяет ли ссылка скачивать данные.
+
+        Returns:
+            `True`, если тип доступа равен `PublicLinkPermissionType.DOWNLOAD`,
+            иначе `False`.
+        """
 
         return self.permission_type == PublicLinkPermissionType.DOWNLOAD
 
     @property
     def allows_upload(self) -> bool:
-        """Возвращает True, если ссылка позволяет загружать файлы."""
+        """Проверяет, позволяет ли ссылка загружать файлы.
+
+        Returns:
+            `True`, если тип доступа равен `PublicLinkPermissionType.UPLOAD`,
+            иначе `False`.
+        """
 
         return self.permission_type == PublicLinkPermissionType.UPLOAD
 
@@ -313,7 +395,8 @@ class PublicLink(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
             moment: Момент времени для проверки.
 
         Returns:
-            True, если срок действия публичной ссылки истёк.
+            `True`, если срок действия публичной ссылки истёк к указанному
+            моменту, иначе `False`.
         """
 
         return self.expires_at is not None and self.expires_at <= moment
@@ -321,18 +404,15 @@ class PublicLink(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
     def is_available_at(self, moment: datetime) -> bool:
         """Проверяет, может ли публичная ссылка быть использована.
 
-        Ссылка доступна, если:
-            - активна;
-            - не отключена;
-            - не отозвана;
-            - срок действия не истёк;
-            - лимит скачиваний не достигнут.
+        Ссылка доступна, если она активна, не отключена, не отозвана, срок
+        действия не истёк и лимит скачиваний не достигнут.
 
         Args:
             moment: Момент времени для проверки.
 
         Returns:
-            True, если публичная ссылка может быть использована.
+            `True`, если публичная ссылка может быть использована,
+            иначе `False`.
         """
 
         return (
@@ -350,7 +430,8 @@ class PublicLink(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
             moment: Момент времени для проверки.
 
         Returns:
-            True, если просмотр разрешён.
+            `True`, если публичная ссылка доступна и разрешает просмотр,
+            иначе `False`.
         """
 
         return self.is_available_at(moment) and self.allows_view
@@ -362,7 +443,8 @@ class PublicLink(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
             moment: Момент времени для проверки.
 
         Returns:
-            True, если скачивание разрешено.
+            `True`, если публичная ссылка доступна и разрешает скачивание,
+            иначе `False`.
         """
 
         return self.is_available_at(moment) and self.allows_download
@@ -374,7 +456,8 @@ class PublicLink(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
             moment: Момент времени для проверки.
 
         Returns:
-            True, если загрузка разрешена.
+            `True`, если публичная ссылка доступна и разрешает загрузку,
+            иначе `False`.
         """
 
         return self.is_available_at(moment) and self.allows_upload
@@ -386,9 +469,14 @@ class PublicLink(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
     def mark_accessed(self, accessed_at: datetime | None = None) -> None:
         """Фиксирует обращение к публичной ссылке.
 
+        Обновляет время последнего обращения и увеличивает счётчик просмотров.
+        Если время обращения не передано, используется текущее UTC-время.
+
         Args:
-            accessed_at: Дата и время обращения. Если значение не передано,
-                используется текущее время UTC.
+            accessed_at: Дата и время обращения.
+
+        Returns:
+            None.
         """
 
         self.last_accessed_at = accessed_at or datetime.now(UTC)
@@ -397,9 +485,15 @@ class PublicLink(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
     def register_download(self, downloaded_at: datetime | None = None) -> None:
         """Увеличивает счётчик скачиваний и фиксирует время скачивания.
 
+        Проверяет лимит скачиваний, увеличивает счётчик скачиваний, сохраняет
+        время последнего скачивания и синхронизирует время последнего обращения.
+
         Args:
             downloaded_at: Дата и время скачивания. Если значение не передано,
                 используется текущее время UTC.
+
+        Returns:
+            None.
 
         Raises:
             ValueError: Если лимит скачиваний уже достигнут.
@@ -415,9 +509,15 @@ class PublicLink(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
     def register_upload(self, uploaded_at: datetime | None = None) -> None:
         """Увеличивает счётчик загрузок через публичную ссылку.
 
+        Обновляет количество загрузок, время последней загрузки и время
+        последнего обращения к ссылке.
+
         Args:
             uploaded_at: Дата и время загрузки. Если значение не передано,
                 используется текущее время UTC.
+
+        Returns:
+            None.
         """
 
         self.upload_count += 1
@@ -432,11 +532,17 @@ class PublicLink(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
     ) -> None:
         """Отзывает публичную ссылку.
 
+        Переводит ссылку в статус `REVOKED`, снимает признак активности,
+        сохраняет пользователя, причину и время отзыва. Если время отзыва
+        не передано, используется текущее UTC-время.
+
         Args:
             revoked_by: Идентификатор пользователя, который отозвал ссылку.
             reason: Причина отзыва публичной ссылки.
-            revoked_at: Дата и время отзыва. Если значение не передано,
-                используется текущее время UTC.
+            revoked_at: Дата и время отзыва.
+
+        Returns:
+            None.
         """
 
         self.status = PublicLinkStatus.REVOKED
@@ -446,7 +552,11 @@ class PublicLink(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
         self.revoked_at = revoked_at or datetime.now(UTC)
 
     def disable(self) -> None:
-        """Временно отключает публичную ссылку без отзыва."""
+        """Временно отключает публичную ссылку без отзыва.
+
+        Returns:
+            None.
+        """
 
         self.status = PublicLinkStatus.DISABLED
         self.is_active = False
@@ -454,8 +564,11 @@ class PublicLink(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
     def activate(self) -> None:
         """Активирует публичную ссылку.
 
-        Метод не снимает отзыв. Отозванную ссылку не следует активировать
-        повторно.
+        Переводит ссылку в активный статус и устанавливает признак активности.
+        Метод не снимает отзыв: отозванную ссылку нельзя активировать повторно.
+
+        Returns:
+            None.
 
         Raises:
             ValueError: Если публичная ссылка уже была отозвана.
@@ -468,7 +581,11 @@ class PublicLink(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
         self.is_active = True
 
     def mark_expired(self) -> None:
-        """Помечает публичную ссылку как истёкшую."""
+        """Помечает публичную ссылку как истёкшую.
+
+        Returns:
+            None.
+        """
 
         self.status = PublicLinkStatus.EXPIRED
         self.is_active = False
@@ -477,8 +594,11 @@ class PublicLink(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
         """Устанавливает или удаляет пароль публичной ссылки.
 
         Args:
-            password_hash: Новый хэш пароля. Если передано ``None``, пароль
+            password_hash: Новый хэш пароля. Если передано `None`, пароль
                 удаляется.
+
+        Returns:
+            None.
         """
 
         self.password_hash = password_hash
@@ -488,7 +608,10 @@ class PublicLink(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
 
         Args:
             expires_at: Новая дата истечения срока действия. Если передано
-                ``None``, срок действия становится неограниченным.
+                `None`, срок действия становится неограниченным.
+
+        Returns:
+            None.
         """
 
         self.expires_at = expires_at
@@ -496,9 +619,15 @@ class PublicLink(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
     def update_download_limit(self, max_downloads: int | None) -> None:
         """Обновляет лимит скачиваний.
 
+        Устанавливает новое максимальное количество скачиваний или снимает
+        лимит, если передано `None`.
+
         Args:
-            max_downloads: Новый лимит скачиваний. Если передано ``None``,
+            max_downloads: Новый лимит скачиваний. Если передано `None`,
                 лимит скачиваний снимается.
+
+        Returns:
+            None.
 
         Raises:
             ValueError: Если новый лимит меньше текущего числа скачиваний.
@@ -513,6 +642,12 @@ class PublicLink(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
         self.max_downloads = max_downloads
 
     def __repr__(self) -> str:
+        """Возвращает строковое представление публичной ссылки.
+
+        Returns:
+            Строковое представление `PublicLink` с основными полями.
+        """
+
         return (
             f"<PublicLink("
             f"id={self.id}, "
