@@ -7,6 +7,7 @@ import type {
   PublicLinkRevokeRequest,
   PublicLinkPublicRead,
   PublicLinkDownloadResponse,
+  PublicLinkFolderArchiveResponse,
 } from "@/types/public-links";
 
 export const publicLinksApi = {
@@ -38,4 +39,14 @@ export const publicLinksApi = {
 
   revoke: (id: string, data: PublicLinkRevokeRequest = {}) =>
     api.post<PublicLinkRead>(`/public-links/${id}/revoke`, data).then((r) => r.data),
+
+  startFolderArchive: (token: string) =>
+    api
+      .post<PublicLinkFolderArchiveResponse>(`/public-links/public/${token}/folder-download`, { token })
+      .then((r) => r.data),
+
+  pollFolderArchive: (token: string, taskId: string) =>
+    api
+      .get<PublicLinkFolderArchiveResponse>(`/public-links/public/${token}/folder-download/${taskId}`)
+      .then((r) => r.data),
 };

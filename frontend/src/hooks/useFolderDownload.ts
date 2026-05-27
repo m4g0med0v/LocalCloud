@@ -61,8 +61,6 @@ export function useFolderDownload() {
       const a = document.createElement("a");
       a.href = downloadResp.presigned_url;
       a.download = downloadResp.filename ?? `${folderName}.zip`;
-      a.target = "_blank";
-      a.rel = "noopener noreferrer";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

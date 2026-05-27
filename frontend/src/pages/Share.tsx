@@ -1,10 +1,12 @@
 import { useParams } from "react-router-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useState, useEffect, useRef } from "react";
 import { Download, FileText, Folder, Loader2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { publicLinksApi } from "@/api/public-links";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { BackgroundTaskStatus } from "@/types/public-links";
 
 
 export function SharePage() {
@@ -23,14 +25,73 @@ export function SharePage() {
       const a = document.createElement("a");
       a.href = resp.presigned_url;
       a.download = resp.filename ?? "download";
-      a.target = "_blank";
-      a.rel = "noopener noreferrer";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
     },
     onError: () => toast.error("Не удалось скачать файл"),
   });
+
+  const [folderStatus, setFolderStatus] = useState<BackgroundTaskStatus | null>(null);
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function stopPolling() {
+    if (pollRef.current !== null) {
+      clearTimeout(pollRef.current);
+      pollRef.current = null;
+    }
+  }
+
+  useEffect(() => {
+    return stopPolling;
+  }, []);
+
+  const startFolderArchive = useMutation({
+    mutationFn: () => publicLinksApi.startFolderArchive(token!),
+    onSuccess: (resp) => {
+      setFolderStatus(resp.status);
+      if (resp.status === "completed" && resp.presigned_url) {
+        triggerDownload(resp.presigned_url, resp.filename ?? "archive.zip");
+        return;
+      }
+
+      function schedulePoll() {
+        pollRef.current = setTimeout(async () => {
+          try {
+            const status = await publicLinksApi.pollFolderArchive(token!, resp.task_id);
+            setFolderStatus(status.status);
+            if (status.status === "completed" && status.presigned_url) {
+              pollRef.current = null;
+              triggerDownload(status.presigned_url, status.filename ?? "archive.zip");
+            } else if (status.status === "failed") {
+              pollRef.current = null;
+              toast.error("Не удалось создать архив папки");
+            } else {
+              schedulePoll();
+            }
+          } catch {
+            pollRef.current = null;
+            toast.error("Не удалось получить статус архива");
+          }
+        }, 2000);
+      }
+
+      schedulePoll();
+    },
+    onError: () => toast.error("Не удалось начать создание архива"),
+  });
+
+  function triggerDownload(url: string, filename: string) {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+
+  const isFolderArchiving = startFolderArchive.isPending ||
+    (folderStatus !== null && folderStatus !== "completed" && folderStatus !== "failed");
 
   if (isLoading) {
     return (
@@ -87,18 +148,38 @@ export function SharePage() {
 
         {/* Action */}
         {canDownload ? (
-          <Button
-            className="w-full"
-            disabled={download.isPending}
-            onClick={() => download.mutate()}
-          >
-            {download.isPending ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Download className="mr-2 h-4 w-4" />
-            )}
-            Скачать
-          </Button>
+          isFolder ? (
+            <Button
+              className="w-full"
+              disabled={isFolderArchiving}
+              onClick={() => { setFolderStatus(null); stopPolling(); startFolderArchive.mutate(); }}
+            >
+              {isFolderArchiving ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {folderStatus === "in_progress" ? "Создаётся архив…" : "Подготовка…"}
+                </>
+              ) : (
+                <>
+                  <Download className="mr-2 h-4 w-4" />
+                  Скачать как ZIP
+                </>
+              )}
+            </Button>
+          ) : (
+            <Button
+              className="w-full"
+              disabled={download.isPending}
+              onClick={() => download.mutate()}
+            >
+              {download.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="mr-2 h-4 w-4" />
+              )}
+              Скачать
+            </Button>
+          )
         ) : (
           <p className="text-sm text-muted-foreground">Доступ только для просмотра.</p>
         )}

@@ -28,6 +28,7 @@ from schemas.public_links import (
     PublicLinkAccessResponse,
     PublicLinkCreateRequest,
     PublicLinkDownloadResponse,
+    PublicLinkFolderArchiveResponse,
     PublicLinkListItem,
     PublicLinkPublicRead,
     PublicLinkQueryParams,
@@ -333,6 +334,62 @@ async def download_from_public_link(
 
     request_data = data.model_copy(update={"token": token})
     return await public_links_service.create_public_download_url(request_data)
+
+
+@router.post(
+    "/public/{token}/folder-download",
+    response_model=PublicLinkFolderArchiveResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def start_public_folder_archive(
+    data: PublicLinkAccessRequest,
+    token: str = Path(..., min_length=1, max_length=128),
+    public_links_service: PublicLinksService = Depends(
+        get_public_links_service_dependency
+    ),
+) -> PublicLinkFolderArchiveResponse:
+    """Ставит задачу на создание ZIP-архива папки по публичной ссылке.
+
+    Возвращает идентификатор задачи. Опрашивайте GET /public/{token}/folder-download/{task_id}
+    до получения статуса completed и ссылки на скачивание.
+
+    Args:
+        data: Токен и необязательный пароль публичной ссылки.
+        token: Публичный токен ссылки.
+        public_links_service: Сервис публичных ссылок.
+
+    Returns:
+        Идентификатор задачи и её начальный статус.
+    """
+
+    request_data = data.model_copy(update={"token": token})
+    return await public_links_service.create_public_folder_archive(request_data)
+
+
+@router.get(
+    "/public/{token}/folder-download/{task_id}",
+    response_model=PublicLinkFolderArchiveResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def get_public_folder_archive_status(
+    token: str = Path(..., min_length=1, max_length=128),
+    task_id: UUID = Path(...),
+    public_links_service: PublicLinksService = Depends(
+        get_public_links_service_dependency
+    ),
+) -> PublicLinkFolderArchiveResponse:
+    """Возвращает статус архивной задачи и ссылку для скачивания, когда готово.
+
+    Args:
+        token: Публичный токен ссылки.
+        task_id: Идентификатор фоновой задачи.
+        public_links_service: Сервис публичных ссылок.
+
+    Returns:
+        Статус задачи и, если статус completed, presigned URL для скачивания.
+    """
+
+    return await public_links_service.get_public_folder_archive_status(token, task_id)
 
 
 __all__ = ["router"]

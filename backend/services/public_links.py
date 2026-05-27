@@ -33,6 +33,8 @@ from database.models.enums import (
     AuditAction,
     AuditResourceType,
     AuditResult,
+    BackgroundTaskStatus,
+    BackgroundTaskType,
     NodeType,
     PublicLinkStatus,
     StorageObjectStatus,
@@ -45,6 +47,7 @@ from schemas.public_links import (
     PublicLinkAccessResponse,
     PublicLinkCreateRequest,
     PublicLinkDownloadResponse,
+    PublicLinkFolderArchiveResponse,
     PublicLinkListItem,
     PublicLinkPublicRead,
     PublicLinkQueryParams,
@@ -764,6 +767,208 @@ class PublicLinksService:
                 filename=node.name,
                 size_bytes=file.size_bytes,
                 mime_type=file.mime_type,
+            )
+
+        except StorageError as exc:
+            raise service_error_from_storage(
+                exc, service=SERVICE_NAME, operation=operation
+            ) from exc
+        except ServiceError:
+            raise
+        except DatabaseError as exc:
+            raise service_error_from_database(
+                exc, service=SERVICE_NAME, operation=operation
+            ) from exc
+        except Exception as exc:
+            raise service_error_from_exception(
+                exc, service=SERVICE_NAME, operation=operation
+            ) from exc
+
+    async def create_public_folder_archive(
+        self,
+        data: PublicLinkAccessRequest,
+    ) -> PublicLinkFolderArchiveResponse:
+        """Ставит фоновую задачу на создание ZIP-архива папки по публичной ссылке.
+
+        Проверяет токен, пароль, тип узла и разрешение на скачивание. Создаёт
+        задачу от имени владельца папки, поскольку у публичных пользователей нет
+        учётной записи.
+
+        Args:
+            data: Токен и необязательный пароль публичной ссылки.
+
+        Returns:
+            Идентификатор задачи и её текущий статус.
+
+        Raises:
+            PublicLinkServiceError: Если ссылка недоступна или скачивание запрещено.
+            PermissionServiceError: Если пароль неверен.
+            ValidationServiceError: Если узел не является папкой.
+            ServiceError: При ошибке базы данных или непредвиденной ошибке.
+        """
+
+        operation = "create_public_folder_archive"
+
+        try:
+            async with self.uow_factory() as uow:
+                link = await uow.links.get_required_available_link_by_token(data.token)
+                _ensure_public_download_allowed(link, operation=operation)
+                _validate_public_link_password(link, data.password, operation=operation)
+
+                node = await uow.nodes.get_required_by_id(link.node_id)
+                if node.node_type != NodeType.FOLDER:
+                    raise ValidationServiceError(
+                        "This endpoint is for folder downloads only.",
+                        field="node_type",
+                        value=node.node_type.value,
+                        reason="folder_archive_for_file_not_supported",
+                        details={"service": SERVICE_NAME, "operation": operation},
+                    )
+
+                owner_id = node.owner_id
+                archive_name = f"{node.name}.zip"
+                task = await uow.tasks.create_user_task(
+                    task_type=BackgroundTaskType.CREATE_FOLDER_ARCHIVE,
+                    created_by=owner_id,
+                    related_entity_type="folder",
+                    related_entity_id=node.id,
+                    flush=True,
+                    refresh=True,
+                )
+                payload = {
+                    "folder_id": str(node.id),
+                    "include_deleted": False,
+                    "archive_name": archive_name,
+                    "password": None,
+                }
+                result_data = {
+                    "folder_id": str(node.id),
+                    "archive_name": archive_name,
+                    "storage_bucket": self.storage_service.default_archives_bucket,
+                    "storage_key": self.storage_service.build_archive_key(
+                        user_id=owner_id,
+                        task_id=task.id,
+                        extension="zip",
+                    ),
+                    "content_type": "application/zip",
+                    "password_protected": False,
+                }
+                task = await uow.tasks.update(
+                    task,
+                    {"payload": payload, "result_data": result_data},
+                    flush=True,
+                    refresh=True,
+                    allowed_fields={"payload", "result_data"},
+                )
+                task_id = task.id
+                task_status = task.status
+                await uow.commit()
+
+            return PublicLinkFolderArchiveResponse(
+                task_id=task_id,
+                status=task_status,
+            )
+
+        except ServiceError:
+            raise
+        except DatabaseError as exc:
+            raise service_error_from_database(
+                exc, service=SERVICE_NAME, operation=operation
+            ) from exc
+        except Exception as exc:
+            raise service_error_from_exception(
+                exc, service=SERVICE_NAME, operation=operation
+            ) from exc
+
+    async def get_public_folder_archive_status(
+        self,
+        token: str,
+        task_id: UUID,
+    ) -> PublicLinkFolderArchiveResponse:
+        """Возвращает статус архивной задачи и, если готово, ссылку для скачивания.
+
+        Загружает задачу и проверяет, что она относится к узлу данной публичной
+        ссылки. Если задача завершена — строит presigned URL и возвращает его.
+
+        Args:
+            token: Публичный токен ссылки.
+            task_id: Идентификатор фоновой задачи создания архива.
+
+        Returns:
+            Статус задачи и опциональная ссылка для скачивания.
+
+        Raises:
+            PublicLinkServiceError: Если ссылка недоступна.
+            ValidationServiceError: Если задача не принадлежит узлу данной ссылки.
+            ServiceError: При ошибке базы данных, хранилища или непредвиденной ошибке.
+        """
+
+        operation = "get_public_folder_archive_status"
+
+        try:
+            async with self.uow_factory() as uow:
+                link = await uow.links.get_required_available_link_by_token(token)
+                task = await uow.tasks.get_required_by_id(task_id)
+
+                if task.related_entity_id != link.node_id:
+                    raise ValidationServiceError(
+                        "Archive task does not belong to this public link.",
+                        field="task_id",
+                        value=task_id,
+                        reason="task_node_mismatch",
+                        details={"service": SERVICE_NAME, "operation": operation},
+                    )
+
+                task_status = task.status
+                result_data: dict[str, Any] = task.result_data or {}
+                payload_data: dict[str, Any] = task.payload or {}
+
+            if task_status != BackgroundTaskStatus.COMPLETED:
+                return PublicLinkFolderArchiveResponse(
+                    task_id=task_id,
+                    status=task_status,
+                )
+
+            # Worker writes archive_bucket/archive_key; initial result_data had
+            # storage_bucket/storage_key. Support both since dispatcher replaces result_data.
+            # archive_name lives in payload (never overwritten) — result_data fallback for safety.
+            archive_name: str = (
+                payload_data.get("archive_name")
+                or result_data.get("archive_name")
+                or f"archive-{task_id}.zip"
+            )
+            storage_bucket: str = (
+                result_data.get("archive_bucket")
+                or result_data.get("storage_bucket")
+                or self.storage_service.default_archives_bucket
+            )
+            storage_key: str = (
+                result_data.get("archive_key")
+                or result_data.get("storage_key")
+                or ""
+            )
+            size_bytes: int | None = (
+                result_data.get("archive_size_bytes")
+                or result_data.get("size_bytes")
+            )
+
+            presigned = await self.storage_service.create_download_url(
+                bucket=storage_bucket,
+                object_key=storage_key,
+                response_headers=_download_headers(
+                    filename=archive_name,
+                    mime_type="application/zip",
+                ),
+            )
+            expires_at = _expires_at(presigned.expires_at, presigned.expires_in_seconds)
+
+            return PublicLinkFolderArchiveResponse(
+                task_id=task_id,
+                status=task_status,
+                presigned_url=presigned.url,
+                expires_at=expires_at,
+                filename=archive_name,
+                size_bytes=size_bytes,
             )
 
         except StorageError as exc:

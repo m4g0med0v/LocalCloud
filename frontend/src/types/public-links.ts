@@ -73,3 +73,14 @@ export interface PublicLinkDownloadResponse {
   size_bytes: number | null;
   mime_type: string | null;
 }
+
+export type BackgroundTaskStatus = "pending" | "in_progress" | "completed" | "failed";
+
+export interface PublicLinkFolderArchiveResponse {
+  task_id: string;
+  status: BackgroundTaskStatus;
+  presigned_url: string | null;
+  expires_at: string | null;
+  filename: string | null;
+  size_bytes: number | null;
+}

@@ -12,7 +12,7 @@ from pydantic import (
     model_validator,
 )
 
-from database.models.enums import PublicLinkPermissionType, PublicLinkStatus
+from database.models.enums import BackgroundTaskStatus, PublicLinkPermissionType, PublicLinkStatus
 from schemas.common import BaseSchema, PaginationParams
 from schemas.nodes import NodeListItem
 
@@ -658,6 +658,27 @@ class PublicLinkDownloadResponse(BaseSchema):
             raise ValueError("HTTP-метод не должен быть пустым.")
 
         return normalized_value
+
+
+class PublicLinkFolderArchiveResponse(BaseSchema):
+    """Ответ при создании или опросе статуса архива папки по публичной ссылке.
+
+    Attributes:
+        task_id: Идентификатор фоновой задачи создания архива.
+        status: Текущий статус задачи.
+        presigned_url: Предварительно подписанная ссылка на скачивание (только
+            если статус completed).
+        expires_at: Срок действия ссылки на скачивание.
+        filename: Предлагаемое имя ZIP-файла.
+        size_bytes: Размер архива в байтах, если известен.
+    """
+
+    task_id: UUID = Field(..., description="Идентификатор фоновой задачи создания архива.")
+    status: BackgroundTaskStatus = Field(..., description="Текущий статус задачи.")
+    presigned_url: str | None = Field(default=None, description="Ссылка на скачивание (только при статусе completed).")
+    expires_at: datetime | None = Field(default=None, description="Срок действия ссылки на скачивание.")
+    filename: str | None = Field(default=None, description="Предлагаемое имя ZIP-файла.")
+    size_bytes: int | None = Field(default=None, ge=0, description="Размер архива в байтах.")
 
 
 class PublicLinkRevokeRequest(BaseSchema):

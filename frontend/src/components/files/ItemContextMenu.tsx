@@ -35,8 +35,6 @@ async function triggerDownload(nodeId: string, filename: string) {
   const a = document.createElement("a");
   a.href = resp.presigned_url;
   a.download = resp.filename ?? filename;
-  a.target = "_blank";
-  a.rel = "noopener noreferrer";
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

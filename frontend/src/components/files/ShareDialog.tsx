@@ -61,7 +61,7 @@ function permSummary(p: { can_read: boolean; can_download: boolean; can_write: b
 
 // ── Tab: Public link ──────────────────────────────────────────────────────────
 
-function PublicLinkTab({ nodeId }: { nodeId: string }) {
+function PublicLinkTab({ nodeId, nodeType }: { nodeId: string; nodeType: NodeType }) {
   const qc = useQueryClient();
   const [copied, setCopied] = useState(false);
   const [permType, setPermType] = useState<PublicLinkPermissionType>("download");
@@ -152,7 +152,7 @@ function PublicLinkTab({ nodeId }: { nodeId: string }) {
       <p className="text-sm text-muted-foreground">Публичная ссылка не создана.</p>
 
       <div className="flex flex-wrap gap-2">
-        {(["view", "download"] as PublicLinkPermissionType[]).map((t) => (
+        {(nodeType === "folder" ? ["download"] : ["view", "download"] as PublicLinkPermissionType[]).map((t) => (
           <button
             key={t}
             type="button"
@@ -404,7 +404,7 @@ interface Props {
 
 type Tab = "link" | "access";
 
-export function ShareDialog({ open, onOpenChange, nodeId, nodeName }: Props) {
+export function ShareDialog({ open, onOpenChange, nodeId, nodeName, nodeType }: Props) {
   const [tab, setTab] = useState<Tab>("link");
 
   return (
@@ -435,7 +435,7 @@ export function ShareDialog({ open, onOpenChange, nodeId, nodeName }: Props) {
         </div>
 
         {tab === "link" ? (
-          <PublicLinkTab nodeId={nodeId} />
+          <PublicLinkTab nodeId={nodeId} nodeType={nodeType} />
         ) : (
           <AccessTab nodeId={nodeId} />
         )}
