@@ -76,7 +76,10 @@ export function Sidebar({ collapsed, onToggle }: Props) {
                   <HardDrive className="h-3 w-3 shrink-0" />
                   <span className="truncate">{formatBytes(quota.storage_used_bytes)} / {formatBytes(quota.storage_limit_bytes)}</span>
                 </div>
-                <Progress value={usedPct} className="h-1 bg-border" />
+                <div className="flex items-center gap-2">
+                  <Progress value={usedPct} className="h-1 flex-1 bg-border" />
+                  <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">{usedPct}%</span>
+                </div>
               </div>
             )}
           </div>
