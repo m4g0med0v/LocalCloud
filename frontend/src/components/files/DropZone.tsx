@@ -16,7 +16,9 @@ export function DropZone({ onDrop, disabled, children }: Props) {
     e.preventDefault();
     e.stopPropagation();
     dragCounter.current++;
-    if (e.dataTransfer.items.length > 0) setIsDragging(true);
+    // Only activate for external file drags, not internal node moves
+    const hasFiles = Array.from(e.dataTransfer.items).some((i) => i.kind === "file");
+    if (hasFiles) setIsDragging(true);
   }, []);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {

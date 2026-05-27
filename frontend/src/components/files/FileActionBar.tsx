@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Download,
+  FolderInput,
   FolderOpen,
   Info,
   Loader2,
@@ -17,6 +18,7 @@ import { RenameDialog } from "./RenameDialog";
 import { DeleteConfirmDialog } from "./DeleteConfirmDialog";
 import { ShareDialog } from "./ShareDialog";
 import { FolderColorDialog, getFolderColor } from "./FolderColorDialog";
+import { MoveDialog } from "./MoveDialog";
 import { useFolderDownload } from "@/hooks/useFolderDownload";
 import { useInfoPanel } from "@/contexts/infoPanel";
 import { nodesApi } from "@/api/nodes";
@@ -60,6 +62,7 @@ export function FileActionBar({ item, folderQueryKey, onDeselect }: Props) {
   const folderColor = item.node_type === "folder" ? getFolderColor(item.id) : null;
 
   const [renameOpen, setRenameOpen] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [colorOpen, setColorOpen] = useState(false);
@@ -73,6 +76,10 @@ export function FileActionBar({ item, folderQueryKey, onDeselect }: Props) {
   }
 
   const overflowItems = [
+    <DropdownMenuItem key="move" onClick={() => setMoveOpen(true)}>
+      <FolderInput className="mr-2 h-4 w-4" />
+      Переместить
+    </DropdownMenuItem>,
     <DropdownMenuItem key="share" onClick={() => setShareOpen(true)}>
       <Share2 className="mr-2 h-4 w-4" />
       Поделиться
@@ -202,6 +209,13 @@ export function FileActionBar({ item, folderQueryKey, onDeselect }: Props) {
         onOpenChange={setRenameOpen}
         nodeId={item.id}
         currentName={item.name}
+        folderQueryKey={folderQueryKey}
+      />
+      <MoveDialog
+        open={moveOpen}
+        onOpenChange={setMoveOpen}
+        nodeId={item.id}
+        nodeName={item.name}
         folderQueryKey={folderQueryKey}
       />
       <DeleteConfirmDialog

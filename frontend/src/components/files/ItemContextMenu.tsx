@@ -1,5 +1,23 @@
 import { useState } from "react";
-import { Download, FolderInput, Info, Loader2, MoreVertical, Palette, Pencil, Share2, Trash2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import {
+  Download,
+  FolderInput,
+  FolderOpen,
+  Info,
+  Loader2,
+  Palette,
+  Pencil,
+  Share2,
+  Trash2,
+} from "lucide-react";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { RenameDialog } from "./RenameDialog";
 import { DeleteConfirmDialog } from "./DeleteConfirmDialog";
 import { ShareDialog } from "./ShareDialog";
@@ -9,14 +27,8 @@ import { useFolderDownload } from "@/hooks/useFolderDownload";
 import { useInfoPanel } from "@/contexts/infoPanel";
 import { nodesApi } from "@/api/nodes";
 import type { NodeListItem } from "@/types/nodes";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import type { SelectOpts } from "./FileGrid";
+import type { ReactNode } from "react";
 
 async function triggerDownload(nodeId: string, filename: string) {
   const resp = await nodesApi.download(nodeId);
@@ -35,89 +47,103 @@ interface Props {
   folderQueryKey: unknown[];
   folderColor: string | null;
   onColorChange: (color: string | null) => void;
-  onOpenChange?: (open: boolean) => void;
+  isSelected?: boolean;
+  onSelect?: (item: NodeListItem, opts: SelectOpts) => void;
+  children: ReactNode;
 }
 
-export function ItemActions({ item, folderQueryKey, folderColor, onColorChange, onOpenChange }: Props) {
-  const { downloadFolder, downloading } = useFolderDownload();
+export function ItemContextMenu({
+  item,
+  folderQueryKey,
+  folderColor,
+  onColorChange,
+  isSelected,
+  onSelect,
+  children,
+}: Props) {
+  const navigate = useNavigate();
   const { openInfo } = useInfoPanel();
+  const { downloadFolder, downloading } = useFolderDownload();
   const isFolderDownloading = downloading === item.id;
-  const [menuOpen, setMenuOpen] = useState(false);
+
   const [renameOpen, setRenameOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [colorOpen, setColorOpen] = useState(false);
 
-  function handleMenuOpenChange(open: boolean) {
-    setMenuOpen(open);
-    onOpenChange?.(open);
+  function handleDownload() {
+    if (item.node_type === "folder") {
+      downloadFolder(item.id, item.name);
+    } else {
+      triggerDownload(item.id, item.name);
+    }
   }
 
   return (
     <>
-      <DropdownMenu open={menuOpen} onOpenChange={handleMenuOpenChange}>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0">
-            <MoreVertical className="h-3.5 w-3.5" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-40">
-          {item.node_type === "file" && (
-            <>
-              <DropdownMenuItem onClick={() => triggerDownload(item.id, item.name)}>
-                <Download className="mr-2 h-4 w-4" />
-                Скачать
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-            </>
-          )}
+      <ContextMenu onOpenChange={(open) => { if (open && !isSelected) onSelect?.(item, { ctrl: false, shift: false }); }}>
+        <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
+        <ContextMenuContent className="w-48">
           {item.node_type === "folder" && (
             <>
-              <DropdownMenuItem
-                disabled={isFolderDownloading}
-                onClick={() => downloadFolder(item.id, item.name)}
-              >
-                {isFolderDownloading
-                  ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  : <Download className="mr-2 h-4 w-4" />}
-                Скачать
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
+              <ContextMenuItem onClick={() => navigate(`/files/folders/${item.id}`)}>
+                <FolderOpen />
+                Открыть
+              </ContextMenuItem>
+              <ContextMenuSeparator />
             </>
           )}
-          <DropdownMenuItem onClick={() => setRenameOpen(true)}>
-            <Pencil className="mr-2 h-4 w-4" />
+
+          <ContextMenuItem disabled={isFolderDownloading} onClick={handleDownload}>
+            {isFolderDownloading ? (
+              <Loader2 className="animate-spin" />
+            ) : (
+              <Download />
+            )}
+            Скачать
+          </ContextMenuItem>
+
+          <ContextMenuSeparator />
+
+          <ContextMenuItem onClick={() => setRenameOpen(true)}>
+            <Pencil />
             Переименовать
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setMoveOpen(true)}>
-            <FolderInput className="mr-2 h-4 w-4" />
+          </ContextMenuItem>
+
+          <ContextMenuItem onClick={() => setMoveOpen(true)}>
+            <FolderInput />
             Переместить
-          </DropdownMenuItem>
+          </ContextMenuItem>
+
           {item.node_type === "folder" && (
-            <DropdownMenuItem onClick={() => setColorOpen(true)}>
-              <Palette className="mr-2 h-4 w-4" />
+            <ContextMenuItem onClick={() => setColorOpen(true)}>
+              <Palette />
               Цвет папки
-            </DropdownMenuItem>
+            </ContextMenuItem>
           )}
-          <DropdownMenuItem onClick={() => setShareOpen(true)}>
-            <Share2 className="mr-2 h-4 w-4" />
+
+          <ContextMenuItem onClick={() => setShareOpen(true)}>
+            <Share2 />
             Поделиться
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => openInfo(item)}>
-            <Info className="mr-2 h-4 w-4" />
+          </ContextMenuItem>
+
+          <ContextMenuItem onClick={() => openInfo(item)}>
+            <Info />
             Информация
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
+          </ContextMenuItem>
+
+          <ContextMenuSeparator />
+
+          <ContextMenuItem
             onClick={() => setDeleteOpen(true)}
             className="text-destructive focus:text-destructive"
           >
-            <Trash2 className="mr-2 h-4 w-4" />
+            <Trash2 />
             Удалить
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
 
       <RenameDialog
         open={renameOpen}

@@ -1,15 +1,28 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useLocation } from "react-router-dom";
-import { FolderPlus, LayoutGrid, LayoutList, Upload } from "lucide-react";
+import { FolderPlus, FolderUp, LayoutGrid, LayoutList, Upload } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { useFileBrowser } from "@/hooks/useFileBrowser";
 import { useBreadcrumb } from "@/contexts/breadcrumb";
 import { useUpload } from "@/contexts/upload";
-import { FileGrid, type ViewMode } from "@/components/files/FileGrid";
+import { useFolderUpload } from "@/hooks/useFolderUpload";
+import { nodesApi } from "@/api/nodes";
+import { FileGrid, sortItems, type ViewMode, type SelectOpts } from "@/components/files/FileGrid";
 import { FileFilterBar, applyFilter, type FileFilter } from "@/components/files/FileFilterBar";
 import { FileActionBar } from "@/components/files/FileActionBar";
+import { FileMultiActionBar } from "@/components/files/FileMultiActionBar";
 import { DropZone } from "@/components/files/DropZone";
 import { CreateFolderDialog } from "@/components/files/CreateFolderDialog";
 import { Button } from "@/components/ui/button";
+import { useInfoPanel } from "@/contexts/infoPanel";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import type { NodeListItem } from "@/types/nodes";
 
 const VIEW_KEY = "file-view-mode";
@@ -20,29 +33,38 @@ export function FilesPage() {
   const { data, isLoading, error } = useFileBrowser(nodeId);
   const { setCrumbs } = useBreadcrumb();
   const { enqueue } = useUpload();
+  const { uploadFolder } = useFolderUpload();
+  const { selectedItem: infoPanelItem, openInfo } = useInfoPanel();
+  const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
+
+  // webkitdirectory is not in React's type definitions — set it imperatively
+  useEffect(() => {
+    folderInputRef.current?.setAttribute("webkitdirectory", "");
+  }, []);
 
   const [view, setView] = useState<ViewMode>(() => {
     const saved = localStorage.getItem(VIEW_KEY);
     return saved === "list" ? "list" : "grid";
   });
   const [filter, setFilter] = useState<FileFilter>("all");
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const lastSelectedIdRef = useRef<string | null>(null);
 
-  // Derive the selected item from fresh query data so renames/updates reflect immediately
-  const selectedItem = useMemo<NodeListItem | null>(
-    () =>
-      selectedItemId
-        ? (data?.items.find((i) => i.id === selectedItemId) ?? null)
-        : null,
-    [selectedItemId, data?.items],
+  // Derive selected items from fresh query data so renames/updates reflect immediately
+  const selectedItems = useMemo<NodeListItem[]>(
+    () => (data?.items ?? []).filter((i) => selectedIds.has(i.id)),
+    [selectedIds, data?.items],
   );
 
   // On every navigation: pre-select a file from search state, or clear selection
   useEffect(() => {
     const state = location.state as { selectId?: string } | null;
-    setSelectedItemId(state?.selectId ?? null);
+    const selectId = state?.selectId ?? null;
+    setSelectedIds(selectId ? new Set([selectId]) : new Set());
+    lastSelectedIdRef.current = selectId;
   }, [location.key]);
 
   function toggleView(v: ViewMode) {
@@ -87,11 +109,84 @@ export function FilesPage() {
     [handleFiles],
   );
 
-  function handleSelectItem(item: NodeListItem) {
-    setSelectedItemId(item.id);
+  const handleFolderInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (!parentNodeId) return;
+      const captured = Array.from(e.target.files ?? []);
+      e.target.value = "";
+      if (captured.length) uploadFolder(captured, parentNodeId, folderQueryKey);
+    },
+    [uploadFolder, parentNodeId, folderQueryKey],
+  );
+
+  function handleSelectItem(item: NodeListItem, opts: SelectOpts) {
+    const filteredSorted = sortItems(applyFilter(data?.items ?? [], filter));
+
+    if (opts.shift && lastSelectedIdRef.current) {
+      const anchorIdx = filteredSorted.findIndex((i) => i.id === lastSelectedIdRef.current);
+      const clickIdx = filteredSorted.findIndex((i) => i.id === item.id);
+      if (anchorIdx !== -1 && clickIdx !== -1) {
+        const [lo, hi] = anchorIdx < clickIdx ? [anchorIdx, clickIdx] : [clickIdx, anchorIdx];
+        const rangeIds = filteredSorted.slice(lo, hi + 1).map((i) => i.id);
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          for (const id of rangeIds) next.add(id);
+          return next;
+        });
+      }
+      return;
+    }
+
+    if (opts.ctrl) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(item.id)) {
+          next.delete(item.id);
+        } else {
+          next.add(item.id);
+          lastSelectedIdRef.current = item.id;
+        }
+        return next;
+      });
+      return;
+    }
+
+    // Plain click — single select
+    lastSelectedIdRef.current = item.id;
+    setSelectedIds(new Set([item.id]));
+    if (infoPanelItem !== null) {
+      openInfo(item);
+    }
   }
 
+  const handleDrop = useCallback(
+    async (draggedId: string, targetFolderId: string) => {
+      // If the dragged item is part of the selection, move all selected; otherwise just the dragged one
+      const idsToMove = selectedIds.has(draggedId)
+        ? [...selectedIds].filter((id) => id !== targetFolderId)
+        : [draggedId];
+
+      if (!idsToMove.length) return;
+
+      const results = await Promise.allSettled(
+        idsToMove.map((id) => nodesApi.move(id, { target_parent_id: targetFolderId })),
+      );
+
+      const failed = results.filter((r) => r.status === "rejected").length;
+      setSelectedIds(new Set());
+      queryClient.invalidateQueries({ queryKey: folderQueryKey });
+
+      if (failed > 0) {
+        toast.error(`Не удалось переместить ${failed} из ${idsToMove.length} элементов`);
+      } else {
+        toast.success(idsToMove.length === 1 ? "Перемещено" : `Перемещено ${idsToMove.length} элементов`);
+      }
+    },
+    [selectedIds, folderQueryKey, queryClient],
+  );
+
   const filteredItems = applyFilter(data?.items ?? [], filter);
+  const singleSelected = selectedItems.length === 1 ? selectedItems[0] : null;
 
   if (error) {
     return (
@@ -135,6 +230,18 @@ export function FilesPage() {
             <FolderPlus className="mr-2 h-4 w-4" />
             Новая папка
           </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => folderInputRef.current?.click()}
+            disabled={!parentNodeId}
+            title={!parentNodeId ? "Перейдите в папку для загрузки" : undefined}
+          >
+            <FolderUp className="mr-2 h-4 w-4" />
+            Папку
+          </Button>
+
           <Button
             size="sm"
             onClick={() => fileInputRef.current?.click()}
@@ -144,6 +251,8 @@ export function FilesPage() {
             <Upload className="mr-2 h-4 w-4" />
             Загрузить
           </Button>
+
+          {/* Hidden file inputs */}
           <input
             ref={fileInputRef}
             type="file"
@@ -151,32 +260,73 @@ export function FilesPage() {
             className="hidden"
             onChange={handleInputChange}
           />
+          <input
+            ref={folderInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={handleFolderInputChange}
+          />
         </div>
       </div>
 
       {/* Filter bar or action bar */}
-      {selectedItem ? (
-        <FileActionBar
-          item={selectedItem}
+      {selectedItems.length > 1 ? (
+        <FileMultiActionBar
+          items={selectedItems}
           folderQueryKey={folderQueryKey}
-          onDeselect={() => setSelectedItemId(null)}
+          onDeselect={() => setSelectedIds(new Set())}
+        />
+      ) : singleSelected ? (
+        <FileActionBar
+          item={singleSelected}
+          folderQueryKey={folderQueryKey}
+          onDeselect={() => setSelectedIds(new Set())}
         />
       ) : (
         <FileFilterBar active={filter} onChange={setFilter} />
       )}
 
-      {/* Drop zone wraps grid */}
-      <DropZone onDrop={handleFiles} disabled={!parentNodeId}>
-        <FileGrid
-          items={filteredItems}
-          isLoading={isLoading}
-          folderQueryKey={folderQueryKey}
-          view={view}
-          selectedItemId={selectedItemId}
-          onSelectItem={handleSelectItem}
-          onDeselect={() => setSelectedItemId(null)}
-        />
-      </DropZone>
+      {/* Workspace context menu wraps the drop zone */}
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <div className="flex-1 overflow-y-auto rounded-lg">
+            <DropZone onDrop={handleFiles} disabled={!parentNodeId}>
+              <FileGrid
+                items={filteredItems}
+                isLoading={isLoading}
+                folderQueryKey={folderQueryKey}
+                view={view}
+                selectedIds={selectedIds}
+                onSelectItem={handleSelectItem}
+                onDeselect={() => setSelectedIds(new Set())}
+                onDrop={handleDrop}
+              />
+            </DropZone>
+          </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent className="w-52">
+          <ContextMenuItem onClick={() => setCreateOpen(true)}>
+            <FolderPlus />
+            Создать папку
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem
+            disabled={!parentNodeId}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Upload />
+            Загрузить файлы
+          </ContextMenuItem>
+          <ContextMenuItem
+            disabled={!parentNodeId}
+            onClick={() => folderInputRef.current?.click()}
+          >
+            <FolderUp />
+            Загрузить папку
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
 
       <CreateFolderDialog
         open={createOpen}

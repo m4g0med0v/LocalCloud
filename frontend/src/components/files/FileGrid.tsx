@@ -6,17 +6,23 @@ import type { NodeListItem } from "@/types/nodes";
 
 export type ViewMode = "grid" | "list";
 
+export interface SelectOpts {
+  ctrl: boolean;
+  shift: boolean;
+}
+
 interface Props {
   items: NodeListItem[];
   isLoading: boolean;
   folderQueryKey: unknown[];
   view: ViewMode;
-  selectedItemId?: string | null;
-  onSelectItem?: (item: NodeListItem) => void;
+  selectedIds?: Set<string>;
+  onSelectItem?: (item: NodeListItem, opts: SelectOpts) => void;
   onDeselect?: () => void;
+  onDrop?: (draggedId: string, targetFolderId: string) => void;
 }
 
-function sortItems(items: NodeListItem[]): NodeListItem[] {
+export function sortItems(items: NodeListItem[]): NodeListItem[] {
   return [...items].sort((a, b) => {
     if (a.node_type !== b.node_type) return a.node_type === "folder" ? -1 : 1;
     return a.name.localeCompare(b.name, "ru");
@@ -56,9 +62,10 @@ export function FileGrid({
   isLoading,
   folderQueryKey,
   view,
-  selectedItemId,
+  selectedIds,
   onSelectItem,
   onDeselect,
+  onDrop,
 }: Props) {
   if (isLoading) return <LoadingGrid view={view} />;
   if (!items.length) return <EmptyState />;
@@ -76,7 +83,7 @@ export function FileGrid({
           <span className="w-24 shrink-0 text-right">Изменён</span>
           <span className="h-6 w-6 shrink-0" />
         </div>
-        <div className="flex flex-col gap-0.5 pt-1">
+        <div className="flex flex-col gap-0.5 px-1 pt-1 pb-1">
           {sorted.map((item) => (
             <FileListItem
               key={item.id}
@@ -84,8 +91,9 @@ export function FileGrid({
               folderQueryKey={folderQueryKey}
               mimeType={item.file_mime_type}
               sizeBytes={item.file_size_bytes}
-              isSelected={selectedItemId === item.id}
+              isSelected={selectedIds?.has(item.id) ?? false}
               onSelect={onSelectItem}
+              onDrop={onDrop}
             />
           ))}
         </div>
@@ -95,7 +103,7 @@ export function FileGrid({
 
   return (
     <div
-      className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10"
+      className="grid grid-cols-3 gap-3 p-1 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10"
       onClick={onDeselect}
     >
       {sorted.map((item) => (
@@ -105,8 +113,9 @@ export function FileGrid({
           folderQueryKey={folderQueryKey}
           mimeType={item.file_mime_type}
           sizeBytes={item.file_size_bytes}
-          isSelected={selectedItemId === item.id}
+          isSelected={selectedIds?.has(item.id) ?? false}
           onSelect={onSelectItem}
+          onDrop={onDrop}
         />
       ))}
     </div>
