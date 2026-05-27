@@ -41,12 +41,23 @@ const PERM_LABELS: Record<PublicLinkPermissionType, string> = {
   upload: "Загрузка",
 };
 
-const GRANT_LEVELS: { value: PermissionLevel; label: string }[] = [
-  { value: "read", label: "Чтение" },
-  { value: "download", label: "Скачивание" },
-  { value: "write", label: "Запись" },
-  { value: "delete", label: "Удаление" },
-];
+const PERM_FLAGS = [
+  { key: "read",     label: "Чтение" },
+  { key: "download", label: "Скачивание" },
+  { key: "write",    label: "Редактирование" },
+  { key: "delete",   label: "Удаление" },
+] as const;
+
+type PermKey = (typeof PERM_FLAGS)[number]["key"];
+
+function permSummary(p: { can_read: boolean; can_download: boolean; can_write: boolean; can_delete: boolean }): string {
+  const parts: string[] = [];
+  if (p.can_read)     parts.push("чтение");
+  if (p.can_download) parts.push("скачивание");
+  if (p.can_write)    parts.push("редактирование");
+  if (p.can_delete)   parts.push("удаление");
+  return parts.join(" · ");
+}
 
 // ── Tab: Public link ──────────────────────────────────────────────────────────
 
@@ -257,7 +268,16 @@ function UserCombobox({
 function AccessTab({ nodeId }: { nodeId: string }) {
   const qc = useQueryClient();
   const [selectedUser, setSelectedUser] = useState<UserListItem | null>(null);
-  const [level, setLevel] = useState<PermissionLevel>("read");
+  const [selectedPerms, setSelectedPerms] = useState<Set<PermKey>>(new Set(["read"]));
+
+  function togglePerm(key: PermKey) {
+    setSelectedPerms((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
 
   const QUERY_KEY = ["permissions", "node", nodeId];
 
@@ -273,10 +293,14 @@ function AccessTab({ nodeId }: { nodeId: string }) {
       permissionsApi.grant({
         node_id: nodeId,
         user_id: selectedUser!.id,
-        permission_level: level,
+        can_read:     selectedPerms.has("read"),
+        can_download: selectedPerms.has("download"),
+        can_write:    selectedPerms.has("write"),
+        can_delete:   selectedPerms.has("delete"),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QUERY_KEY });
+      qc.invalidateQueries({ queryKey: ["permissions", "node", nodeId, "badge"] });
       toast.success("Доступ выдан");
       setSelectedUser(null);
     },
@@ -288,6 +312,7 @@ function AccessTab({ nodeId }: { nodeId: string }) {
       permissionsApi.revoke({ permission_id: permId }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QUERY_KEY });
+      qc.invalidateQueries({ queryKey: ["permissions", "node", nodeId, "badge"] });
       toast.success("Доступ отозван");
     },
     onError: () => toast.error("Не удалось отозвать доступ"),
@@ -300,14 +325,14 @@ function AccessTab({ nodeId }: { nodeId: string }) {
         <p className="text-xs font-medium text-muted-foreground">Выдать доступ</p>
         <UserCombobox value={selectedUser} onChange={setSelectedUser} />
         <div className="flex flex-wrap gap-1.5">
-          {GRANT_LEVELS.map(({ value, label }) => (
+          {PERM_FLAGS.map(({ key, label }) => (
             <button
-              key={value}
+              key={key}
               type="button"
-              onClick={() => setLevel(value)}
+              onClick={() => togglePerm(key)}
               className={cn(
                 "rounded-full border px-2.5 py-0.5 text-xs transition-colors",
-                level === value
+                selectedPerms.has(key)
                   ? "border-primary bg-primary text-primary-foreground"
                   : "border-border hover:bg-muted",
               )}
@@ -319,7 +344,7 @@ function AccessTab({ nodeId }: { nodeId: string }) {
         <Button
           size="sm"
           className="self-start"
-          disabled={!selectedUser || grant.isPending}
+          disabled={!selectedUser || selectedPerms.size === 0 || grant.isPending}
           onClick={() => grant.mutate()}
         >
           {grant.isPending ? (
@@ -345,11 +370,11 @@ function AccessTab({ nodeId }: { nodeId: string }) {
               key={p.id}
               className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
             >
-              <span className="flex-1 truncate text-muted-foreground font-mono text-xs">
+              <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
                 {p.user_id.slice(0, 8)}…
               </span>
-              <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs">
-                {p.permission_level}
+              <span className="shrink-0 text-xs text-muted-foreground">
+                {permSummary(p) || p.permission_level}
               </span>
               <button
                 type="button"
@@ -385,8 +410,9 @@ export function ShareDialog({ open, onOpenChange, nodeId, nodeName }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="truncate pr-6">Поделиться — {nodeName}</DialogTitle>
+        <DialogHeader className="pr-6">
+          <DialogTitle>Поделиться</DialogTitle>
+          <p className="truncate text-sm text-muted-foreground" title={nodeName}>{nodeName}</p>
         </DialogHeader>
 
         {/* Tabs */}

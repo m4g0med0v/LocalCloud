@@ -2,6 +2,8 @@ import { Folder as FolderIcon } from "lucide-react";
 import { FileGridItem } from "./FileGridItem";
 import { FileListItem } from "./FileListItem";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useThumbnails } from "@/hooks/useThumbnails";
+import { useShareBadges } from "@/hooks/useShareBadges";
 import type { NodeListItem } from "@/types/nodes";
 
 export type ViewMode = "grid" | "list";
@@ -67,6 +69,10 @@ export function FileGrid({
   onDeselect,
   onDrop,
 }: Props) {
+  // Prefetch all image thumbnails in parallel as soon as items are known.
+  const thumbnails = useThumbnails(items);
+  const badges = useShareBadges(items);
+
   if (isLoading) return <LoadingGrid view={view} />;
   if (!items.length) return <EmptyState />;
 
@@ -92,6 +98,7 @@ export function FileGrid({
               mimeType={item.file_mime_type}
               sizeBytes={item.file_size_bytes}
               isSelected={selectedIds?.has(item.id) ?? false}
+              badge={badges.get(item.id)}
               onSelect={onSelectItem}
               onDrop={onDrop}
             />
@@ -114,6 +121,8 @@ export function FileGrid({
           mimeType={item.file_mime_type}
           sizeBytes={item.file_size_bytes}
           isSelected={selectedIds?.has(item.id) ?? false}
+          thumbnailUrl={thumbnails.get(item.id)}
+          badge={badges.get(item.id)}
           onSelect={onSelectItem}
           onDrop={onDrop}
         />

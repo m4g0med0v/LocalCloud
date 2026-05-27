@@ -1,12 +1,15 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Link2, Users } from "lucide-react";
 import { FileIcon } from "./FileIcon";
 import { ItemActions } from "./ItemActions";
 import { ItemContextMenu } from "./ItemContextMenu";
 import { getFolderColor, setFolderColor } from "./FolderColorDialog";
 import { formatBytes } from "@/hooks/useQuota";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { NodeListItem } from "@/types/nodes";
 import type { SelectOpts } from "./FileGrid";
+import type { ShareBadge } from "@/hooks/useShareBadges";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -15,6 +18,7 @@ interface Props {
   sizeBytes?: number | null;
   folderQueryKey: unknown[];
   isSelected?: boolean;
+  badge?: ShareBadge;
   onSelect?: (item: NodeListItem, opts: SelectOpts) => void;
   onDrop?: (draggedId: string, targetFolderId: string) => void;
 }
@@ -33,6 +37,7 @@ export function FileListItem({
   sizeBytes,
   folderQueryKey,
   isSelected,
+  badge,
   onSelect,
   onDrop,
 }: Props) {
@@ -120,6 +125,32 @@ export function FileListItem({
         <span className="min-w-0 flex-1 truncate text-sm font-medium" title={item.name}>
           {item.name}
         </span>
+
+        {/* Share badges */}
+        {(badge?.hasPublicLink || badge?.hasSharedAccess) && (
+          <div className="flex shrink-0 items-center gap-1">
+            {badge.hasPublicLink && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="flex h-4 w-4 items-center justify-center rounded-full bg-sky-500">
+                    <Link2 className="h-2 w-2 text-white" />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>Публичная ссылка</TooltipContent>
+              </Tooltip>
+            )}
+            {badge.hasSharedAccess && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="flex h-4 w-4 items-center justify-center rounded-full bg-violet-500">
+                    <Users className="h-2 w-2 text-white" />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>Доступ выдан</TooltipContent>
+              </Tooltip>
+            )}
+          </div>
+        )}
 
         <span className="shrink-0 text-xs text-muted-foreground">
           {item.node_type === "file" && sizeBytes != null ? formatBytes(sizeBytes) : ""}

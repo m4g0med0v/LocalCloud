@@ -1,14 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Link2, Users } from "lucide-react";
 import { FileIcon } from "./FileIcon";
 import { ItemActions } from "./ItemActions";
 import { ItemContextMenu } from "./ItemContextMenu";
 import { getFolderColor, setFolderColor } from "./FolderColorDialog";
 import { formatBytes } from "@/hooks/useQuota";
-import { nodesApi } from "@/api/nodes";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { NodeListItem } from "@/types/nodes";
 import type { SelectOpts } from "./FileGrid";
+import type { ShareBadge } from "@/hooks/useShareBadges";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -17,6 +19,9 @@ interface Props {
   sizeBytes?: number | null;
   folderQueryKey: unknown[];
   isSelected?: boolean;
+  /** undefined = still loading | null = failed | string = presigned URL */
+  thumbnailUrl?: string | null;
+  badge?: ShareBadge;
   onSelect?: (item: NodeListItem, opts: SelectOpts) => void;
   onDrop?: (draggedId: string, targetFolderId: string) => void;
 }
@@ -35,6 +40,8 @@ export function FileGridItem({
   sizeBytes,
   folderQueryKey,
   isSelected,
+  thumbnailUrl,
+  badge,
   onSelect,
   onDrop,
 }: Props) {
@@ -47,39 +54,6 @@ export function FileGridItem({
   );
 
   const isImage = item.node_type === "file" && !!mimeType?.startsWith("image/");
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const cardRef = useRef<HTMLDivElement>(null);
-
-  // Lazy-load thumbnail: only fetch when the card scrolls into view
-  useEffect(() => {
-    if (!isImage) return;
-    const el = cardRef.current;
-    if (!el) return;
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          observer.disconnect();
-          let cancelled = false;
-          setPreviewLoading(true);
-          nodesApi
-            .download(item.id)
-            .then((resp) => { if (!cancelled) setPreviewUrl(resp.presigned_url); })
-            .catch(() => {})
-            .finally(() => { if (!cancelled) setPreviewLoading(false); });
-          // store cancel flag on the observer so the cleanup below can reach it
-          (observer as unknown as { _cancel?: () => void })._cancel = () => { cancelled = true; };
-        }
-      },
-      { rootMargin: "150px" },
-    );
-    observer.observe(el);
-    return () => {
-      (observer as unknown as { _cancel?: () => void })._cancel?.();
-      observer.disconnect();
-    };
-  }, [isImage, item.id]);
 
   function handleColorChange(color: string | null) {
     setFolderColor(item.id, color);
@@ -107,7 +81,6 @@ export function FileGridItem({
       onSelect={onSelect}
     >
       <div
-        ref={cardRef}
         className={cn(
           "group relative flex flex-col rounded-xl overflow-hidden text-center",
           "cursor-pointer select-none transition-all duration-150 hover:shadow-md",
@@ -151,11 +124,11 @@ export function FileGridItem({
         {/* Preview / icon area */}
         <div className="relative flex h-24 w-full items-center justify-center bg-muted/30">
           {isImage ? (
-            previewLoading ? (
+            thumbnailUrl === undefined ? (
               <Skeleton className="h-full w-full rounded-none" />
-            ) : previewUrl ? (
+            ) : thumbnailUrl ? (
               <img
-                src={previewUrl}
+                src={thumbnailUrl}
                 alt={item.name}
                 className="h-full w-full object-cover"
                 draggable={false}
@@ -165,6 +138,32 @@ export function FileGridItem({
             )
           ) : (
             <FileIcon nodeType={item.node_type} mimeType={mimeType} className="h-10 w-10" color={folderColor} />
+          )}
+
+          {/* Share badges */}
+          {(badge?.hasPublicLink || badge?.hasSharedAccess) && (
+            <div className="absolute bottom-1 left-1 flex items-center gap-0.5">
+              {badge.hasPublicLink && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-sky-500 shadow-sm">
+                      <Link2 className="h-2.5 w-2.5 text-white" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">Публичная ссылка</TooltipContent>
+                </Tooltip>
+              )}
+              {badge.hasSharedAccess && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-violet-500 shadow-sm">
+                      <Users className="h-2.5 w-2.5 text-white" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">Доступ выдан</TooltipContent>
+                </Tooltip>
+              )}
+            </div>
           )}
         </div>
 

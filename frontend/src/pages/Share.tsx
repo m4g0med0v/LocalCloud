@@ -1,6 +1,7 @@
 import { useParams } from "react-router-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Download, FileText, Folder, Loader2, AlertTriangle } from "lucide-react";
+import { toast } from "sonner";
 import { publicLinksApi } from "@/api/public-links";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -28,6 +29,7 @@ export function SharePage() {
       a.click();
       document.body.removeChild(a);
     },
+    onError: () => toast.error("Не удалось скачать файл"),
   });
 
   if (isLoading) {
@@ -84,7 +86,7 @@ export function SharePage() {
         </div>
 
         {/* Action */}
-        {canDownload && !isFolder ? (
+        {canDownload ? (
           <Button
             className="w-full"
             disabled={download.isPending}
@@ -98,9 +100,7 @@ export function SharePage() {
             Скачать
           </Button>
         ) : (
-          <p className="text-sm text-muted-foreground">
-            {isFolder ? "Папки нельзя скачать по ссылке." : "Доступ только для просмотра."}
-          </p>
+          <p className="text-sm text-muted-foreground">Доступ только для просмотра.</p>
         )}
 
         <p className="text-xs text-muted-foreground">
