@@ -24,7 +24,7 @@ function formatDate(iso: string): string {
   });
 }
 
-export function FileGridItem({
+export function FileListItem({
   item,
   mimeType,
   sizeBytes,
@@ -57,9 +57,9 @@ export function FileGridItem({
   return (
     <div
       className={cn(
-        "group relative flex flex-col items-center gap-2 rounded-xl p-4 text-center",
-        "cursor-pointer select-none transition-all duration-150 hover:bg-accent hover:shadow-md",
-        isSelected ? "bg-primary/10 ring-2 ring-primary/50" : "bg-card",
+        "group flex cursor-pointer select-none items-center gap-3 rounded-lg px-3 py-2",
+        "transition-colors hover:bg-accent",
+        isSelected && "bg-primary/10 ring-1 ring-inset ring-primary/40",
       )}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
@@ -69,24 +69,28 @@ export function FileGridItem({
         if (e.key === "Enter" || e.key === " ") onSelect?.(item);
       }}
     >
-      <FileIcon nodeType={item.node_type} mimeType={mimeType} className="h-10 w-10" color={folderColor} />
+      <FileIcon
+        nodeType={item.node_type}
+        mimeType={mimeType}
+        className="h-4 w-4 shrink-0"
+        color={folderColor}
+      />
 
-      <span className="line-clamp-2 w-full break-words text-xs font-medium leading-tight" title={item.name}>
+      <span className="min-w-0 flex-1 truncate text-sm font-medium" title={item.name}>
         {item.name}
       </span>
 
-      <span className="text-[10px] text-muted-foreground">
-        {item.node_type === "file" && sizeBytes != null
-          ? formatBytes(sizeBytes)
-          : formatDate(item.updated_at)}
+      <span className="shrink-0 text-xs text-muted-foreground">
+        {item.node_type === "file" && sizeBytes != null ? formatBytes(sizeBytes) : ""}
+      </span>
+
+      <span className="w-24 shrink-0 text-right text-xs text-muted-foreground">
+        {formatDate(item.updated_at)}
       </span>
 
       <div
-        className={cn(
-          "absolute right-1 top-1 transition-opacity",
-          menuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100",
-        )}
         onClick={(e) => e.stopPropagation()}
+        className={cn(!menuOpen && "opacity-0 group-hover:opacity-100")}
       >
         <ItemActions
           item={item}

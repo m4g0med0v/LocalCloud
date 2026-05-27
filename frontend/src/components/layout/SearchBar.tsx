@@ -77,7 +77,8 @@ export function SearchBar() {
   function pick(item: NodeListItem) {
     setOpen(false);
     setRaw("");
-    navigate(resultHref(item));
+    const state = item.node_type === "file" ? { selectId: item.id } : undefined;
+    navigate(resultHref(item), { state });
   }
 
   // scroll active item into view

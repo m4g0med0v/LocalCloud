@@ -9,6 +9,12 @@ export interface FolderPatchRequest {
   name?: string;
 }
 
+export interface FolderArchiveResponse {
+  task_id: string;
+  status: string;
+  message: string;
+}
+
 export interface FolderRead {
   id: string;
   node_id: string;

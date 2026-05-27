@@ -371,6 +371,14 @@ class NodeListItem(BaseSchema):
         ...,
         description="Признак логического удаления узла.",
     )
+    file_size_bytes: int | None = Field(
+        default=None,
+        description="Размер файла в байтах. None для папок.",
+    )
+    file_mime_type: str | None = Field(
+        default=None,
+        description="MIME-тип файла. None для папок.",
+    )
 
 
 class NodeTreeItem(BaseSchema):

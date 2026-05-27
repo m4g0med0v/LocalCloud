@@ -16,6 +16,7 @@ interface Props {
   nodeType: "file" | "folder";
   mimeType?: string | null;
   className?: string;
+  color?: string | null;
 }
 
 function iconForMime(mime: string): LucideIcon {
@@ -46,9 +47,16 @@ function iconForMime(mime: string): LucideIcon {
   return File;
 }
 
-export function FileIcon({ nodeType, mimeType, className }: Props) {
+export function FileIcon({ nodeType, mimeType, className, color }: Props) {
   const cls = cn("shrink-0", className);
-  if (nodeType === "folder") return <Folder className={cn(cls, "text-yellow-500")} />;
+  if (nodeType === "folder") {
+    return (
+      <Folder
+        className={cn(cls, !color && "text-yellow-500")}
+        style={color ? { color } : undefined}
+      />
+    );
+  }
   const Icon = mimeType ? iconForMime(mimeType) : File;
   return <Icon className={cn(cls, "text-muted-foreground")} />;
 }

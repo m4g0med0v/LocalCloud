@@ -48,8 +48,12 @@ export interface FileDownloadRequest {
 }
 
 export interface FileDownloadResponse {
-  url?: string;
-  download_url?: string;
-  expires_at?: string;
+  presigned_url: string;
+  expires_at: string;
+  method: string;
+  headers: Record<string, string>;
+  file_id?: string;
   filename?: string;
+  size_bytes?: number;
+  mime_type?: string;
 }

@@ -26,6 +26,7 @@ export function DeleteConfirmDialog({ open, onOpenChange, nodeId, name, folderQu
     mutationFn: () => nodesApi.softDelete(nodeId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: folderQueryKey });
+      queryClient.invalidateQueries({ queryKey: ["trash"] });
       toast.success("Перемещено в корзину");
       onOpenChange(false);
     },

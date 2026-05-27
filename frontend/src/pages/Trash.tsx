@@ -44,6 +44,7 @@ function TrashRow({ item, selected, onToggle }: RowProps) {
     mutationFn: () => trashApi.restore(item.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: ["nodes"] });
       toast.success("Восстановлено");
     },
     onError: () => toast.error("Не удалось восстановить"),
@@ -53,6 +54,7 @@ function TrashRow({ item, selected, onToggle }: RowProps) {
     mutationFn: () => trashApi.purge(item.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: ["quota", "me"] });
       toast.success("Удалено навсегда");
       setPurgeOpen(false);
     },
@@ -170,6 +172,7 @@ export function TrashPage() {
       toast.success("Файлы восстановлены");
       setSelected(new Set());
       queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: ["nodes"] });
     },
     onError: () => toast.error("Не удалось восстановить файлы"),
   });
@@ -185,6 +188,7 @@ export function TrashPage() {
       toast.success("Файлы удалены навсегда");
       setSelected(new Set());
       queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: ["quota", "me"] });
     },
     onError: () => toast.error("Не удалось удалить файлы"),
   });
@@ -196,6 +200,7 @@ export function TrashPage() {
       toast.success("Корзина очищена");
       setSelected(new Set());
       queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: ["quota", "me"] });
       setEmptyOpen(false);
     },
     onError: () => toast.error("Не удалось очистить корзину"),

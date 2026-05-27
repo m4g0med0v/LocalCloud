@@ -1401,6 +1401,7 @@ def _node_snapshot(node: FileSystemNode) -> dict[str, Any]:
         авторами изменений, признаком удаления и временными метками узла.
     """
 
+    file = node.file if hasattr(node, "file") else None
     return {
         "id": node.id,
         "owner_id": node.owner_id,
@@ -1417,6 +1418,8 @@ def _node_snapshot(node: FileSystemNode) -> dict[str, Any]:
         "updated_at": node.updated_at,
         "is_deleted": bool(node.is_deleted),
         "deleted_at": node.deleted_at,
+        "file_size_bytes": file.size_bytes if file is not None else None,
+        "file_mime_type": file.mime_type if file is not None else None,
     }
 
 

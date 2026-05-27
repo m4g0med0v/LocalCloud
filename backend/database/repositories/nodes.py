@@ -313,6 +313,7 @@ class FileSystemNodeRepository(BaseRepository[FileSystemNode]):
 
         statement = (
             select(FileSystemNode)
+            .options(selectinload(FileSystemNode.file))
             .where(*conditions)
             .order_by(self._get_order_by(sort_by, sort_direction))
             .offset(offset)
@@ -365,6 +366,7 @@ class FileSystemNodeRepository(BaseRepository[FileSystemNode]):
 
         statement = (
             select(FileSystemNode)
+            .options(selectinload(FileSystemNode.file))
             .where(*conditions)
             .order_by(self._get_order_by(sort_by, sort_direction))
             .offset(offset)

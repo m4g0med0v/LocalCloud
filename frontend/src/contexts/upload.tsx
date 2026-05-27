@@ -142,6 +142,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
 
         dispatch({ type: "DONE", id: task.id });
         queryClient.invalidateQueries({ queryKey: qKey });
+        queryClient.invalidateQueries({ queryKey: ["quota", "me"] });
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Ошибка загрузки";
         dispatch({ type: "ERROR", id: task.id, error: msg });

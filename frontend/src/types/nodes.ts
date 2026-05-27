@@ -31,6 +31,8 @@ export interface NodeListItem {
   created_at: string;
   updated_at: string;
   is_deleted: boolean;
+  file_size_bytes?: number | null;
+  file_mime_type?: string | null;
 }
 
 export interface NodeMoveRequest {

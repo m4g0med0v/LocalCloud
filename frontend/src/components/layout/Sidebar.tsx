@@ -1,9 +1,11 @@
-import { Cloud, Files, Trash2, Shield, ChevronLeft, ChevronRight } from "lucide-react";
+import { Cloud, Files, Trash2, Shield, ChevronLeft, ChevronRight, HardDrive } from "lucide-react";
 import { NavItem } from "./NavItem";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/contexts/auth";
+import { useMyQuota, formatBytes } from "@/hooks/useQuota";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -14,6 +16,10 @@ interface Props {
 export function Sidebar({ collapsed, onToggle }: Props) {
   const { user } = useAuth();
   const isAdmin = user?.roles.some((r) => r.code === "admin") ?? false;
+  const { data: quota } = useMyQuota();
+  const usedPct = quota
+    ? Math.min(100, Math.round((quota.storage_used_bytes / quota.storage_limit_bytes) * 100))
+    : 0;
 
   return (
     <TooltipProvider>
@@ -49,6 +55,32 @@ export function Sidebar({ collapsed, onToggle }: Props) {
             </>
           )}
         </nav>
+
+        {/* Quota */}
+        {quota && (
+          <div className="px-2 pb-1">
+            {collapsed ? (
+              <Tooltip delayDuration={0}>
+                <TooltipTrigger asChild>
+                  <div className="flex justify-center py-1">
+                    <HardDrive className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="right" sideOffset={8}>
+                  {formatBytes(quota.storage_used_bytes)} / {formatBytes(quota.storage_limit_bytes)}
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <div className="rounded-lg bg-muted/40 px-3 py-2">
+                <div className="mb-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <HardDrive className="h-3 w-3 shrink-0" />
+                  <span className="truncate">{formatBytes(quota.storage_used_bytes)} / {formatBytes(quota.storage_limit_bytes)}</span>
+                </div>
+                <Progress value={usedPct} className="h-1 bg-border" />
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Collapse toggle */}
         <div className="p-2">

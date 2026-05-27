@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { KeyRound, LogOut, User } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
-import { useMyQuota, formatBytes } from "@/hooks/useQuota";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,17 +10,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { ChangePasswordDialog } from "@/components/auth/ChangePasswordDialog";
 
 export function UserMenu() {
   const { user, logout } = useAuth();
-  const { data: quota } = useMyQuota();
   const [changePassOpen, setChangePassOpen] = useState(false);
-
-  const usedPct = quota
-    ? Math.min(100, Math.round((quota.used_bytes / quota.max_bytes) * 100))
-    : 0;
 
   return (
     <>
@@ -38,18 +31,6 @@ export function UserMenu() {
             <p className="text-xs text-muted-foreground">{user?.email}</p>
           </div>
         </DropdownMenuLabel>
-        {quota && (
-          <>
-            <DropdownMenuSeparator />
-            <div className="px-2 py-1.5">
-              <div className="mb-1 flex justify-between text-xs text-muted-foreground">
-                <span>{formatBytes(quota.used_bytes)}</span>
-                <span>{formatBytes(quota.max_bytes)}</span>
-              </div>
-              <Progress value={usedPct} className="h-1.5" />
-            </div>
-          </>
-        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => setChangePassOpen(true)}>
           <KeyRound className="mr-2 h-4 w-4" />
