@@ -1,4 +1,4 @@
-"""Эндпоинты для работы с multipart-загрузками файлов.
+﻿"""Эндпоинты для работы с multipart-загрузками файлов.
 
 Модуль содержит маршрутизатор FastAPI для создания upload-сессий,
 получения списка и состояния upload-сессий, генерации pre-signed URL
@@ -11,7 +11,6 @@ Attributes:
     router: Маршрутизатор FastAPI с префиксом `/uploads` и тегом `uploads`.
 """
 
-from __future__ import annotations
 
 from uuid import UUID
 

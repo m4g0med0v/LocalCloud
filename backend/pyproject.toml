@@ -18,4 +18,5 @@ dependencies = [
     "ruff",
     "ty",
     "uvicorn[standard]>=0.48.0",
+    "requests>=2.34.2",
 ]

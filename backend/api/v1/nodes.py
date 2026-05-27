@@ -1,4 +1,4 @@
-"""Эндпоинты для работы с узлами файловой системы.
+﻿"""Эндпоинты для работы с узлами файловой системы.
 
 Модуль содержит маршрутизатор FastAPI для просмотра, поиска, обновления,
 переименования, перемещения и удаления узлов файловой системы. Также
@@ -14,14 +14,20 @@ Attributes:
     router: Маршрутизатор FastAPI с префиксом `/nodes` и тегом `nodes`.
 """
 
-from __future__ import annotations
 
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Path, Query, status
 
-from api.dependencies import get_nodes_service_dependency
+from api.dependencies import (
+    get_downloads_service_dependency,
+    get_files_service_dependency,
+    get_folders_service_dependency,
+    get_nodes_service_dependency,
+)
 from schemas.common import PageResponse
+from schemas.files import FileDownloadRequest, FileDownloadResponse
+from schemas.folders import FolderContentRead
 from schemas.nodes import (
     NodeBreadcrumbItem,
     NodeListItem,
@@ -40,7 +46,7 @@ from security import (
     RequireReadNodeDependency,
     RequireWriteNodeDependency,
 )
-from services import NodesService
+from services import DownloadsService, FilesService, FoldersService, NodesService
 
 # Маршрутизатор эндпоинтов для работы с узлами файловой системы.
 router = APIRouter(prefix="/nodes", tags=["nodes"])
@@ -349,6 +355,26 @@ async def delete_node(
     )
 
 
+@router.post(
+    "/{node_id}/download",
+    response_model=FileDownloadResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def download_node(
+    current_user: CurrentActiveUserDependency,
+    _: None = RequireReadNodeDependency,
+    node_id: UUID = Path(...),
+    force_download: bool = Query(default=True),
+    files_service: FilesService = Depends(get_files_service_dependency),
+    downloads_service: DownloadsService = Depends(get_downloads_service_dependency),
+) -> FileDownloadResponse:
+    """Создаёт ссылку для скачивания файла по идентификатору узла."""
+
+    file_read = await files_service.get_file(node_id, user_id=current_user.id)
+    request_data = FileDownloadRequest(file_id=file_read.id, force_download=force_download)
+    return await downloads_service.create_file_download_url(request_data, user_id=current_user.id)
+
+
 @router.get(
     "/{node_id}/breadcrumbs",
     response_model=list[NodeBreadcrumbItem],
@@ -387,6 +413,42 @@ async def get_node_breadcrumbs(
         node_id,
         user_id=current_user.id,
         allow_deleted=include_deleted,
+    )
+
+
+@router.get(
+    "/{node_id}/content",
+    response_model=FolderContentRead,
+    status_code=status.HTTP_200_OK,
+)
+async def get_folder_content_by_node(
+    current_user: CurrentActiveUserDependency,
+    _: None = RequireReadNodeDependency,
+    node_id: UUID = Path(...),
+    folders_service: FoldersService = Depends(get_folders_service_dependency),
+) -> FolderContentRead:
+    """Возвращает содержимое папки по идентификатору узла.
+
+    Позволяет получить содержимое папки, используя идентификатор узла
+    файловой системы вместо идентификатора папки.
+
+    Args:
+        current_user: Текущий активный пользователь, запрашивающий содержимое.
+        _: Зависимость проверки права чтения узла.
+        node_id: Уникальный идентификатор узла папки.
+        folders_service: Сервис папок, выполняющий получение содержимого.
+
+    Returns:
+        Содержимое указанной папки.
+
+    Raises:
+        HTTPException: Если пользователь не аутентифицирован, узел не найден,
+            узел не является папкой или доступ к содержимому запрещён.
+    """
+
+    return await folders_service.get_folder_content(
+        node_id,
+        user_id=current_user.id,
     )
 
 

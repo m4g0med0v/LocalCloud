@@ -1,4 +1,4 @@
-"""Эндпоинты проверки состояния приложения.
+﻿"""Эндпоинты проверки состояния приложения.
 
 Модуль содержит маршрутизатор FastAPI для liveness-, readiness- и health-check
 проверок приложения. Предоставляет публичные проверки жизнеспособности и
@@ -13,7 +13,6 @@ Attributes:
     router: Маршрутизатор FastAPI с префиксом `/health` и тегом `health`.
 """
 
-from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Response, status
 

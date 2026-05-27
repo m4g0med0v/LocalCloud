@@ -424,7 +424,7 @@ class PermissionsService:
 
         operation = "list_node_permissions"
         limit = _validate_limit(limit)
-        items: list[NodePermission] = []
+        snapshots: list[dict] = []
         total = 0
         try:
             async with self.uow_factory() as uow:
@@ -446,10 +446,11 @@ class PermissionsService:
                     node_id=node_id,
                     active_only=active_only,
                 )
+                snapshots = [_permission_snapshot(item) for item in items]
 
             dto_items = [
-                NodePermissionListItem.model_validate(_permission_snapshot(item))
-                for item in items
+                NodePermissionListItem.model_validate(snapshot)
+                for snapshot in snapshots
             ]
             return PageResponse(
                 items=dto_items,

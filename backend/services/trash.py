@@ -642,10 +642,14 @@ class TrashService:
                 details={"service": SERVICE_NAME, "operation": operation},
             )
 
-        trash_item_ids = await self._find_purge_candidates(
-            owner_id=owner_id,
-            only_expired=data.only_expired,
-        )
+        if data.only_expired:
+            trash_item_ids = await self._find_purge_candidates(
+                owner_id=owner_id,
+                only_expired=True,
+            )
+        else:
+            trash_item_ids = await self._find_all_active(owner_id=owner_id)
+
         if not trash_item_ids:
             return _purge_response(
                 requested_count=0,
@@ -657,6 +661,39 @@ class TrashService:
             TrashPurgeRequest(trash_item_ids=trash_item_ids, reason=data.reason),
             actor_id=actor_id,
         )
+
+    async def _find_all_active(self, *, owner_id: UUID) -> list[UUID]:
+        """Возвращает идентификаторы всех активных элементов корзины пользователя.
+
+        Пагинирует по batch=1000, чтобы не превышать MAX_LIMIT репозитория.
+
+        Args:
+            owner_id: Идентификатор владельца корзины.
+
+        Returns:
+            Список идентификаторов элементов корзины.
+        """
+
+        _BATCH = 1000
+        candidate_ids: list[UUID] = []
+        offset = 0
+
+        while True:
+            async with self.uow_factory() as uow:
+                items = await uow.trash.get_user_active_trash(
+                    owner_id=owner_id,
+                    exclude_expired=False,
+                    offset=offset,
+                    limit=_BATCH,
+                )
+                batch_ids = [item.id for item in items]
+                batch_len = len(items)
+            candidate_ids.extend(batch_ids)
+            if batch_len < _BATCH:
+                break
+            offset += batch_len
+
+        return candidate_ids
 
     async def cleanup_expired(
         self,
@@ -1003,20 +1040,33 @@ class TrashService:
             Список идентификаторов элементов корзины для purge.
         """
 
-        candidate_ids: list[UUID] | None = None
-        async with self.uow_factory() as uow:
-            items = await uow.trash.get_expired_items(
-                now=expired_before or datetime.now(UTC),
-                owner_id=owner_id,
-                include_non_restorable=not only_expired,
-                offset=0,
-                limit=limit,
-            )
+        _BATCH = 1000
+        candidate_ids: list[UUID] = []
+        now = expired_before or datetime.now(UTC)
+        offset = 0
+
+        while len(candidate_ids) < limit:
+            batch_limit = min(_BATCH, limit - len(candidate_ids))
+            async with self.uow_factory() as uow:
+                items = await uow.trash.get_expired_items(
+                    now=now,
+                    owner_id=owner_id,
+                    include_non_restorable=not only_expired,
+                    offset=offset,
+                    limit=batch_limit,
+                )
+                if older_than is not None:
+                    batch = [(item.id, item.deleted_at) for item in items]
+                else:
+                    batch = [(item.id, None) for item in items]
+                raw_len = len(items)
             if older_than is not None:
-                items = [item for item in items if item.deleted_at <= older_than]
-            candidate_ids = [item.id for item in items]
-        if candidate_ids is None:
-            raise _empty_result_error("_find_purge_candidates")
+                batch = [(id_, ts) for id_, ts in batch if ts is not None and ts <= older_than]
+            candidate_ids.extend(id_ for id_, _ in batch)
+            if raw_len < batch_limit:
+                break
+            offset += raw_len
+
         return candidate_ids
 
     async def _delete_storage_objects(

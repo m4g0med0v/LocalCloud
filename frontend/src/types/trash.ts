@@ -1,0 +1,34 @@
+import type { NodeListItem } from "./nodes";
+
+export type TrashItemStatus = "in_trash" | "restored" | "purged";
+
+export interface TrashItemListItem {
+  id: string;
+  node_id: string;
+  owner_id: string;
+  deleted_by: string | null;
+  original_parent_id: string | null;
+  original_path: string;
+  status: TrashItemStatus;
+  deleted_at: string;
+  expires_at: string | null;
+  restore_available: boolean;
+  purged_at: string | null;
+  node: NodeListItem | null;
+}
+
+export interface TrashRestoreRequest {
+  trash_item_id?: string;
+  node_id?: string;
+  target_parent_id?: string | null;
+}
+
+export interface TrashRestoreResponse {
+  message: string;
+  node_id: string;
+  restored_path: string | null;
+}
+
+export interface TrashPurgeResponse {
+  message: string;
+}
