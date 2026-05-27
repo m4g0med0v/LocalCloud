@@ -48,6 +48,32 @@
                Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
+/* ── Light theme ─────────────────────────────────────────── */
+html.light {
+  --color-background:          #f8f8f6;
+  --color-foreground:          #373734;
+
+  --color-card:                #ffffff;
+  --color-card-foreground:     #373734;
+
+  --color-popover:             #ffffff;
+  --color-popover-foreground:  #373734;
+
+  --color-secondary:           #ecebe8;
+  --color-secondary-foreground: #373734;
+
+  --color-muted:               #ecebe8;
+  --color-muted-foreground:    #7b7974;
+
+  --color-accent:              #ecebe8;
+  --color-accent-foreground:   #373734;
+
+  --color-border:              #d7d7d4;
+  --color-input:               #d7d7d4;
+
+  --color-panel:               #ffffff;
+}
+
 /* ── Global border color default ─────────────────────────── */
 *, *::before, *::after {
   border-color: var(--color-border);
@@ -63,15 +89,21 @@
 *::-webkit-scrollbar-thumb  { background: #3b3b37; border-radius: 99px; }
 *::-webkit-scrollbar-thumb:hover { background: #4a4a47; }
 
+html.light * {
+  scrollbar-color: #d7d7d4 transparent;
+}
+html.light *::-webkit-scrollbar-thumb       { background: #d7d7d4; }
+html.light *::-webkit-scrollbar-thumb:hover { background: #c5c4c0; }
+
 /* ── Base ────────────────────────────────────────────────── */
 html, body {
-  background-color: #1f1f1e;
-  color: #f0f0f0;
+  background-color: var(--color-background);
+  color: var(--color-foreground);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 ::selection {
   background-color: rgba(217, 119, 87, 0.28);
-  color: #f0f0f0;
+  color: var(--color-foreground);
 }

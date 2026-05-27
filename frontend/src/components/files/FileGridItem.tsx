@@ -84,6 +84,7 @@ export function FileGridItem({
         className={cn(
           "group relative flex flex-col rounded-xl overflow-hidden text-center",
           "cursor-pointer select-none transition-all duration-150 hover:shadow-md",
+          "border border-border",
           isSelected ? "bg-primary/10 ring-2 ring-primary/50" : "bg-card hover:bg-accent",
           isDragging && "opacity-40",
           isDragOver && "ring-2 ring-primary bg-primary/10",

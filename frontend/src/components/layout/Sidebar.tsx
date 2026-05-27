@@ -25,7 +25,7 @@ export function Sidebar({ collapsed, onToggle }: Props) {
     <TooltipProvider>
       <aside
         className={cn(
-          "relative flex h-screen flex-col bg-panel transition-all duration-200",
+          "relative flex h-screen flex-col bg-panel border-r border-border transition-all duration-200",
           collapsed ? "w-[60px]" : "w-[220px]",
         )}
       >

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useBreadcrumb } from "@/contexts/breadcrumb";
 import { UserMenu } from "./UserMenu";
 import { SearchBar } from "./SearchBar";
+import { ThemeToggle } from "./ThemeToggle";
 import { Button } from "@/components/ui/button";
 import {
   Breadcrumb,
@@ -21,7 +22,7 @@ export function TopBar() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-3 bg-panel px-4" style={{ boxShadow: "0 1px 0 0 #3b3b37" }}>
+    <header className="sticky top-0 z-30 flex h-14 items-center gap-3 bg-panel px-4" style={{ boxShadow: "0 1px 0 0 var(--color-border)" }}>
       {/* Mobile hamburger */}
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetTrigger asChild>
@@ -63,6 +64,8 @@ export function TopBar() {
 
       {/* Search */}
       <SearchBar />
+
+      <ThemeToggle />
 
       {/* User menu */}
       <UserMenu />
