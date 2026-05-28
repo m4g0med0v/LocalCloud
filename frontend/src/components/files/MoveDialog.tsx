@@ -72,6 +72,11 @@ export function MoveDialog({ open, onOpenChange, nodeId, nodeName, folderQueryKe
       toast.success(`«${nodeName}» перемещено`);
       onOpenChange(false);
       queryClient.invalidateQueries({ queryKey: folderQueryKey });
+      if (currentFolderId) {
+        queryClient.invalidateQueries({ queryKey: ["nodes", currentFolderId, "content"] });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ["nodes", "root"] });
+      }
     } catch {
       toast.error("Не удалось переместить");
     } finally {

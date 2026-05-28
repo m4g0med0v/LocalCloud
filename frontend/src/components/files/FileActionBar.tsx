@@ -219,8 +219,7 @@ export function FileActionBar({ item, folderQueryKey, onDeselect }: Props) {
       <DeleteConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
-        nodeId={item.id}
-        name={item.name}
+        items={[item]}
         folderQueryKey={folderQueryKey}
       />
       <ShareDialog

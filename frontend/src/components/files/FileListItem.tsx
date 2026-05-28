@@ -24,6 +24,7 @@ function prefetchFolder(id: string) {
         folder: c.folder,
         breadcrumbs: c.breadcrumbs,
       })),
+    staleTime: 30_000,
   });
 }
 
@@ -33,6 +34,7 @@ interface Props {
   sizeBytes?: number | null;
   folderQueryKey: unknown[];
   isSelected?: boolean;
+  selectedItems?: NodeListItem[];
   badge?: ShareBadge;
   onSelect?: (item: NodeListItem, opts: SelectOpts) => void;
   onDrop?: (draggedId: string, targetFolderId: string) => void;
@@ -52,6 +54,7 @@ export function FileListItem({
   sizeBytes,
   folderQueryKey,
   isSelected,
+  selectedItems,
   badge,
   onSelect,
   onDrop,
@@ -87,6 +90,7 @@ export function FileListItem({
       folderColor={folderColor}
       onColorChange={handleColorChange}
       isSelected={isSelected ?? false}
+      selectedItems={selectedItems}
       onSelect={onSelect}
     >
       <div

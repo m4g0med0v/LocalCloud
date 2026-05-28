@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { nodesApi } from "@/api/nodes";
 import { foldersApi } from "@/api/folders";
@@ -21,6 +22,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export function useFolderDownload() {
+  const queryClient = useQueryClient();
   const [downloading, setDownloading] = useState<string | null>(null);
 
   async function downloadFolder(nodeId: string, folderName: string) {
@@ -66,6 +68,7 @@ export function useFolderDownload() {
       document.body.removeChild(a);
 
       toast.success(`«${folderName}» скачивается`, { id: toastId });
+      queryClient.invalidateQueries({ queryKey: ["nodes", nodeId, "content"] });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Неизвестная ошибка";
       toast.error(`Не удалось скачать «${folderName}»: ${message}`, { id: toastId });

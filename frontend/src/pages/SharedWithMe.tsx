@@ -313,8 +313,7 @@ function SharedRow({ item }: RowProps) {
         <DeleteConfirmDialog
           open={deleteOpen}
           onOpenChange={setDeleteOpen}
-          nodeId={item.node_id}
-          name={item.node_name}
+          items={[{ id: item.node_id, name: item.node_name }]}
           folderQueryKey={QUERY_KEY}
         />
       )}

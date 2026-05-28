@@ -25,6 +25,7 @@ function prefetchFolder(id: string) {
         folder: c.folder,
         breadcrumbs: c.breadcrumbs,
       })),
+    staleTime: 30_000,
   });
 }
 
@@ -34,6 +35,7 @@ interface Props {
   sizeBytes?: number | null;
   folderQueryKey: unknown[];
   isSelected?: boolean;
+  selectedItems?: NodeListItem[];
   /** undefined = still loading | null = failed | string = presigned URL */
   thumbnailUrl?: string | null;
   badge?: ShareBadge;
@@ -55,6 +57,7 @@ export function FileGridItem({
   sizeBytes,
   folderQueryKey,
   isSelected,
+  selectedItems,
   thumbnailUrl,
   badge,
   onSelect,
@@ -93,6 +96,7 @@ export function FileGridItem({
       folderColor={folderColor}
       onColorChange={handleColorChange}
       isSelected={isSelected ?? false}
+      selectedItems={selectedItems}
       onSelect={onSelect}
     >
       <div

@@ -199,8 +199,8 @@ export function FilesPage() {
   return (
     <div className="flex h-full flex-col gap-3">
       {/* Toolbar */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="min-w-0 flex-1 truncate text-lg font-semibold">
           {data?.folder?.node?.name ?? "Файлы"}
         </h1>
         <div className="flex items-center gap-2">

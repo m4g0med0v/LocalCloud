@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, delete as sa_delete, or_, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
@@ -83,6 +83,10 @@ class FileSystemNodeRepository(BaseRepository[FileSystemNode]):
                 selectinload(FileSystemNode.file),
                 selectinload(FileSystemNode.folder),
                 selectinload(FileSystemNode.trash_item),
+                selectinload(FileSystemNode.owner),
+                selectinload(FileSystemNode.creator),
+                selectinload(FileSystemNode.updater),
+                selectinload(FileSystemNode.deleter),
             )
         )
 
@@ -1531,11 +1535,16 @@ class FileSystemNodeRepository(BaseRepository[FileSystemNode]):
             EntityNotFoundError: Если узел не найден.
         """
 
-        await self.delete_by_id(
-            node_id,
-            flush=flush,
-            required=True,
-        )
+        stmt = sa_delete(FileSystemNode).where(FileSystemNode.id == node_id)
+        result = await self.session.execute(stmt)
+        if result.rowcount == 0:
+            raise EntityNotFoundError(
+                self.model_name,
+                entity_id=node_id,
+                repository=self.repository_name,
+            )
+        if flush:
+            await self.flush()
 
     # ------------------------------------------------------------------
     # Проверки конфликтов и существования

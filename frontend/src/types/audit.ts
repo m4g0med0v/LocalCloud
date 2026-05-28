@@ -21,6 +21,8 @@ export interface AuditLogQueryParams {
   user_id?: string;
   action?: string;
   resource_type?: string;
+  result?: string;
+  query?: string;
   date_from?: string;
   date_to?: string;
 }

@@ -40,3 +40,26 @@ export interface UserQuotaUpdate {
   public_links_limit?: number | null;
   active_upload_sessions_limit?: number | null;
 }
+
+export type QuotaIncreaseRequestStatus = "pending" | "approved" | "rejected";
+
+export interface QuotaIncreaseRequest {
+  id: string;
+  user_id: string;
+  username: string | null;
+  email: string | null;
+  requested_bytes: number;
+  current_limit_bytes: number;
+  reason: string | null;
+  status: QuotaIncreaseRequestStatus;
+  admin_comment: string | null;
+  created_at: string;
+  reviewed_at: string | null;
+}
+
+export interface ServerStorage {
+  total_bytes: number;
+  used_bytes: number;
+  free_bytes: number;
+  allocated_quota_bytes: number;
+}

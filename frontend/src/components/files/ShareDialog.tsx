@@ -402,11 +402,7 @@ interface Props {
   nodeType: NodeType;
 }
 
-type Tab = "link" | "access";
-
 export function ShareDialog({ open, onOpenChange, nodeId, nodeName, nodeType }: Props) {
-  const [tab, setTab] = useState<Tab>("link");
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
@@ -415,30 +411,7 @@ export function ShareDialog({ open, onOpenChange, nodeId, nodeName, nodeType }: 
           <p className="truncate text-sm text-muted-foreground" title={nodeName}>{nodeName}</p>
         </DialogHeader>
 
-        {/* Tabs */}
-        <div className="flex gap-1 rounded-lg border p-1">
-          {(["link", "access"] as Tab[]).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTab(t)}
-              className={cn(
-                "flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-                tab === t
-                  ? "bg-background shadow-sm"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {t === "link" ? "Публичная ссылка" : "Доступ"}
-            </button>
-          ))}
-        </div>
-
-        {tab === "link" ? (
-          <PublicLinkTab nodeId={nodeId} nodeType={nodeType} />
-        ) : (
-          <AccessTab nodeId={nodeId} />
-        )}
+        <PublicLinkTab nodeId={nodeId} nodeType={nodeType} />
       </DialogContent>
     </Dialog>
   );

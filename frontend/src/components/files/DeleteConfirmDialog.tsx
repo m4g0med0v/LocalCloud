@@ -14,24 +14,37 @@ import {
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  nodeId: string;
-  name: string;
+  items: Array<{ id: string; name: string }>;
   folderQueryKey: unknown[];
 }
 
-export function DeleteConfirmDialog({ open, onOpenChange, nodeId, name, folderQueryKey }: Props) {
+export function DeleteConfirmDialog({ open, onOpenChange, items, folderQueryKey }: Props) {
   const queryClient = useQueryClient();
 
   const mutation = useMutation({
-    mutationFn: () => nodesApi.softDelete(nodeId),
-    onSuccess: () => {
+    mutationFn: () => Promise.allSettled(items.map((i) => nodesApi.softDelete(i.id))),
+    onSuccess: (results) => {
+      const failed = results.filter((r) => r.status === "rejected").length;
       queryClient.invalidateQueries({ queryKey: folderQueryKey });
       queryClient.invalidateQueries({ queryKey: ["trash"] });
-      toast.success("Перемещено в корзину");
+      if (failed === 0) {
+        toast.success(
+          items.length === 1
+            ? "Перемещено в корзину"
+            : `${items.length} элементов перемещено в корзину`,
+        );
+      } else {
+        toast.error(`Не удалось удалить ${failed} из ${items.length}`);
+      }
       onOpenChange(false);
     },
     onError: () => toast.error("Не удалось удалить"),
   });
+
+  const label =
+    items.length === 1
+      ? `«${items[0]?.name}»`
+      : `${items.length} выбранных элемента(ов)`;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -39,7 +52,7 @@ export function DeleteConfirmDialog({ open, onOpenChange, nodeId, name, folderQu
         <DialogHeader>
           <DialogTitle>Удалить?</DialogTitle>
           <DialogDescription>
-            «{name}» будет перемещён в корзину. Вы сможете восстановить его позже.
+            {label} будет перемещено в корзину. Вы сможете восстановить позже.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

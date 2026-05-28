@@ -46,6 +46,7 @@ interface Props {
   folderColor: string | null;
   onColorChange: (color: string | null) => void;
   isSelected?: boolean;
+  selectedItems?: NodeListItem[];
   onSelect?: (item: NodeListItem, opts: SelectOpts) => void;
   children: ReactNode;
 }
@@ -56,6 +57,7 @@ export function ItemContextMenu({
   folderColor,
   onColorChange,
   isSelected,
+  selectedItems,
   onSelect,
   children,
 }: Props) {
@@ -160,8 +162,7 @@ export function ItemContextMenu({
       <DeleteConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
-        nodeId={item.id}
-        name={item.name}
+        items={isSelected && selectedItems && selectedItems.length > 1 ? selectedItems : [item]}
         folderQueryKey={folderQueryKey}
       />
       <ShareDialog

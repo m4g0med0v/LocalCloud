@@ -51,7 +51,10 @@ function LoadingGrid({ view }: { view: ViewMode }) {
     );
   }
   return (
-    <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10">
+    <div
+      className="grid gap-3"
+      style={{ gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))" }}
+    >
       {Array.from({ length: 12 }).map((_, i) => (
         <Skeleton key={i} className="h-[108px] rounded-xl" />
       ))}
@@ -77,6 +80,7 @@ export function FileGrid({
   if (!items.length) return <EmptyState />;
 
   const sorted = sortItems(items);
+  const selectedItems = selectedIds ? items.filter((i) => selectedIds.has(i.id)) : [];
 
   if (view === "list") {
     return (
@@ -98,6 +102,7 @@ export function FileGrid({
               mimeType={item.file_mime_type}
               sizeBytes={item.file_size_bytes}
               isSelected={selectedIds?.has(item.id) ?? false}
+              selectedItems={selectedItems}
               badge={badges.get(item.id)}
               onSelect={onSelectItem}
               onDrop={onDrop}
@@ -110,7 +115,8 @@ export function FileGrid({
 
   return (
     <div
-      className="grid grid-cols-3 gap-3 p-1 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10"
+      className="grid gap-3 p-1"
+      style={{ gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))" }}
       onClick={onDeselect}
     >
       {sorted.map((item) => (
@@ -121,6 +127,7 @@ export function FileGrid({
           mimeType={item.file_mime_type}
           sizeBytes={item.file_size_bytes}
           isSelected={selectedIds?.has(item.id) ?? false}
+          selectedItems={selectedItems}
           thumbnailUrl={thumbnails.get(item.id)}
           badge={badges.get(item.id)}
           onSelect={onSelectItem}

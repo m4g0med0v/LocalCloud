@@ -13,6 +13,7 @@ import { UsersPage } from "@/pages/admin/UsersPage";
 import { RegistrationPage } from "@/pages/admin/RegistrationPage";
 import { AuditPage } from "@/pages/admin/AuditPage";
 import { TasksPage } from "@/pages/admin/TasksPage";
+import { QuotaRequestsPage } from "@/pages/admin/QuotaRequestsPage";
 import { AppShell } from "@/components/layout/AppShell";
 
 function App() {
@@ -43,6 +44,7 @@ function App() {
             <Route index element={<Navigate to="/admin/users" replace />} />
             <Route path="users" element={<UsersPage />} />
             <Route path="registration" element={<RegistrationPage />} />
+            <Route path="quota-requests" element={<QuotaRequestsPage />} />
             <Route path="audit" element={<AuditPage />} />
             <Route path="tasks" element={<TasksPage />} />
           </Route>
