@@ -113,6 +113,71 @@ class DownloadsService:
             uow_factory=self.uow_factory
         )
 
+    async def create_thumbnail_url(
+        self,
+        *,
+        node_id: UUID,
+        user_id: UUID,
+    ) -> FileDownloadResponse:
+        """Создает предварительно подписанный URL для thumbnail узла.
+
+        Если у файла есть готовый preview (preview_status=READY и
+        preview_storage_key), возвращает ссылку на preview-объект.
+        Иначе — ссылку на полный файл без заголовка Content-Disposition,
+        чтобы браузер отображал изображение inline.
+
+        Args:
+            node_id: Идентификатор узла файловой системы.
+            user_id: Идентификатор пользователя, запрашивающего thumbnail.
+
+        Returns:
+            Ответ с предварительно подписанным URL для thumbnail или полного файла.
+
+        Raises:
+            DownloadServiceError: Если файл недоступен.
+            PermissionServiceError: Если у пользователя нет права на чтение.
+            ServiceError: Если произошла ошибка базы данных, хранилища или
+                непредвиденная ошибка сервиса.
+        """
+
+        operation = "create_thumbnail_url"
+        file_snapshot: dict[str, Any] | None = None
+
+        try:
+            async with self.uow_factory() as uow:
+                file = await uow.files.get_required_by_node_id(node_id)
+                node = _require_file_node(file, operation=operation)
+                await self.access_service.require_access(
+                    node_id=node.id,
+                    user_id=user_id,
+                    action=PermissionAction.READ,
+                    uow=uow,
+                )
+                file_snapshot = _thumbnail_snapshot(file)
+
+            if file_snapshot is None:
+                raise _empty_result_error(operation)
+
+            return await self._build_thumbnail_response(file_snapshot)
+
+        except StorageError as exc:
+            raise service_error_from_storage(
+                exc,
+                service=SERVICE_NAME,
+                operation=operation,
+                message="Failed to create pre-signed thumbnail URL.",
+            ) from exc
+        except DatabaseError as exc:
+            raise self._database_error(exc, operation=operation) from exc
+        except ServiceError:
+            raise
+        except Exception as exc:
+            raise self._unexpected_error(
+                exc,
+                operation=operation,
+                message="Failed to create thumbnail URL.",
+            ) from exc
+
     async def create_file_download_url(
         self,
         data: FileDownloadRequest,
@@ -480,6 +545,62 @@ class DownloadsService:
             version_id=version_id,
             filename=filename,
             size_bytes=size_bytes,
+            mime_type=mime_type,
+        )
+
+    async def _build_thumbnail_response(
+        self,
+        file_snapshot: dict[str, Any],
+    ) -> FileDownloadResponse:
+        """Формирует ответ со ссылкой на thumbnail файла.
+
+        Если у файла есть preview-объект, использует его. Иначе — основной
+        объект файла. Content-Disposition не задаётся, чтобы браузер показывал
+        изображение inline.
+
+        Args:
+            file_snapshot: Снимок метаданных файла с preview-полями.
+
+        Returns:
+            Ответ со ссылкой на thumbnail или полный файл.
+
+        Raises:
+            StorageError: Если сервис хранилища не смог создать URL.
+        """
+
+        use_preview = (
+            file_snapshot.get("preview_storage_key") is not None
+            and file_snapshot.get("preview_ready") is True
+        )
+        bucket = cast(str, file_snapshot["storage_bucket"])
+        object_key = (
+            cast(str, file_snapshot["preview_storage_key"])
+            if use_preview
+            else cast(str, file_snapshot["storage_key"])
+        )
+        mime_type = cast(str | None, file_snapshot.get("mime_type"))
+
+        response_headers: dict[str, str] = {}
+        if mime_type:
+            response_headers["response-content-type"] = mime_type
+
+        presigned = await self.storage_service.create_download_url(
+            bucket=bucket,
+            object_key=object_key,
+            response_headers=response_headers or None,
+        )
+        expires_at = _presigned_expires_at(
+            presigned.expires_at,
+            expires_in_seconds=presigned.expires_in_seconds,
+        )
+        return FileDownloadResponse(
+            presigned_url=presigned.url,
+            expires_at=expires_at,
+            method=presigned.method.value,
+            headers=presigned.headers,
+            file_id=cast(UUID, file_snapshot["id"]),
+            filename=None,
+            size_bytes=cast(int, file_snapshot["size_bytes"]),
             mime_type=mime_type,
         )
 
@@ -959,6 +1080,33 @@ def _file_snapshot(file: File) -> dict[str, Any]:
         "current_version_id": file.current_version_id,
         "created_at": file.created_at,
         "updated_at": file.updated_at,
+    }
+
+
+def _thumbnail_snapshot(file: File) -> dict[str, Any]:
+    """Создает снимок метаданных файла для thumbnail.
+
+    Включает поля preview, необходимые для выбора между preview-объектом
+    и основным файлом при генерации presigned URL.
+
+    Args:
+        file: ORM-модель файла.
+
+    Returns:
+        Словарь с идентификаторами, storage-ключами, статусами preview и
+        MIME-типом файла.
+    """
+
+    return {
+        "id": file.id,
+        "node_id": file.node_id,
+        "storage_bucket": file.storage_bucket,
+        "storage_key": file.storage_key,
+        "storage_status": file.storage_status,
+        "size_bytes": file.size_bytes,
+        "mime_type": file.mime_type,
+        "preview_ready": file.preview_available,
+        "preview_storage_key": file.preview_storage_key,
     }
 
 

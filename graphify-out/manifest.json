@@ -1,0 +1,867 @@
+{
+  "C:\\Works\\LocalCloud\\backend\\api\\dependencies.py": {
+    "mtime": 1779712887.4227989,
+    "ast_hash": "5222e7d0d5e64a094c3108c388f43518",
+    "semantic_hash": "5222e7d0d5e64a094c3108c388f43518"
+  },
+  "C:\\Works\\LocalCloud\\backend\\api\\router.py": {
+    "mtime": 1779784439.1789432,
+    "ast_hash": "201e322304ca0270cb81ead438703670",
+    "semantic_hash": "201e322304ca0270cb81ead438703670"
+  },
+  "C:\\Works\\LocalCloud\\backend\\api\\__init__.py": {
+    "mtime": 1779671111.09365,
+    "ast_hash": "3bae6dd65b80c14072c167e6c1a0188d",
+    "semantic_hash": "3bae6dd65b80c14072c167e6c1a0188d"
+  },
+  "C:\\Works\\LocalCloud\\backend\\api\\v1\\audit.py": {
+    "mtime": 1779704141.7350502,
+    "ast_hash": "30431e8ea4efe3e3bfa0258e51cb0968",
+    "semantic_hash": "30431e8ea4efe3e3bfa0258e51cb0968"
+  },
+  "C:\\Works\\LocalCloud\\backend\\api\\v1\\auth.py": {
+    "mtime": 1779789584.0568728,
+    "ast_hash": "d0b5e0d01504b4bde4bd78c13ead9a66",
+    "semantic_hash": "d0b5e0d01504b4bde4bd78c13ead9a66"
+  },
+  "C:\\Works\\LocalCloud\\backend\\api\\v1\\downloads.py": {
+    "mtime": 1779784424.1099284,
+    "ast_hash": "6f4f907af3392385cb7f931df0665097",
+    "semantic_hash": "6f4f907af3392385cb7f931df0665097"
+  },
+  "C:\\Works\\LocalCloud\\backend\\api\\v1\\files.py": {
+    "mtime": 1779704461.9628084,
+    "ast_hash": "6f05ea81b43966f114721ba7c2c1db00",
+    "semantic_hash": "6f05ea81b43966f114721ba7c2c1db00"
+  },
+  "C:\\Works\\LocalCloud\\backend\\api\\v1\\folders.py": {
+    "mtime": 1779704566.9396923,
+    "ast_hash": "7574b5fb962e2a5de52822b3dfbc4fce",
+    "semantic_hash": "7574b5fb962e2a5de52822b3dfbc4fce"
+  },
+  "C:\\Works\\LocalCloud\\backend\\api\\v1\\health.py": {
+    "mtime": 1779704689.76187,
+    "ast_hash": "357a2cde0196ed18d4c0aff5f0380c8e",
+    "semantic_hash": "357a2cde0196ed18d4c0aff5f0380c8e"
+  },
+  "C:\\Works\\LocalCloud\\backend\\api\\v1\\nodes.py": {
+    "mtime": 1779704815.685248,
+    "ast_hash": "8866c1ac8a18fc20319b34c0336ef4cc",
+    "semantic_hash": "8866c1ac8a18fc20319b34c0336ef4cc"
+  },
+  "C:\\Works\\LocalCloud\\backend\\api\\v1\\permissions.py": {
+    "mtime": 1779704925.0016725,
+    "ast_hash": "e46282b32b3d0a1909f6d784578dd580",
+    "semantic_hash": "e46282b32b3d0a1909f6d784578dd580"
+  },
+  "C:\\Works\\LocalCloud\\backend\\api\\v1\\public_links.py": {
+    "mtime": 1779705046.8474545,
+    "ast_hash": "f6777309c7911c95ea8984ed03393c19",
+    "semantic_hash": "f6777309c7911c95ea8984ed03393c19"
+  },
+  "C:\\Works\\LocalCloud\\backend\\api\\v1\\quotas.py": {
+    "mtime": 1779710148.5196629,
+    "ast_hash": "25a081626ee8625a7283a3232acc72e3",
+    "semantic_hash": "25a081626ee8625a7283a3232acc72e3"
+  },
+  "C:\\Works\\LocalCloud\\backend\\api\\v1\\registration.py": {
+    "mtime": 1779710254.4536917,
+    "ast_hash": "6f32a7d0e72a71b38b0abe5c9122fb67",
+    "semantic_hash": "6f32a7d0e72a71b38b0abe5c9122fb67"
+  },
+  "C:\\Works\\LocalCloud\\backend\\api\\v1\\roles.py": {
+    "mtime": 1779710356.830928,
+    "ast_hash": "600212147e1c36f0f56aad8dcd2928cb",
+    "semantic_hash": "600212147e1c36f0f56aad8dcd2928cb"
+  },
+  "C:\\Works\\LocalCloud\\backend\\api\\v1\\tasks.py": {
+    "mtime": 1779710480.3438425,
+    "ast_hash": "c68505c50d61e7d74fa56341fb40a828",
+    "semantic_hash": "c68505c50d61e7d74fa56341fb40a828"
+  },
+  "C:\\Works\\LocalCloud\\backend\\api\\v1\\trash.py": {
+    "mtime": 1779724491.013437,
+    "ast_hash": "85b5015a3195f29eb4547da4a5dbecf1",
+    "semantic_hash": "85b5015a3195f29eb4547da4a5dbecf1"
+  },
+  "C:\\Works\\LocalCloud\\backend\\api\\v1\\uploads.py": {
+    "mtime": 1779712508.0779004,
+    "ast_hash": "0aa35389f7ec386ac869306166e17d41",
+    "semantic_hash": "0aa35389f7ec386ac869306166e17d41"
+  },
+  "C:\\Works\\LocalCloud\\backend\\api\\v1\\users.py": {
+    "mtime": 1779712640.3475432,
+    "ast_hash": "9bc2d696ee4466787df3c00e3f71c862",
+    "semantic_hash": "9bc2d696ee4466787df3c00e3f71c862"
+  },
+  "C:\\Works\\LocalCloud\\backend\\api\\v1\\__init__.py": {
+    "mtime": 1779712685.8642082,
+    "ast_hash": "5673755943caa2f336961cab28e435ee",
+    "semantic_hash": "5673755943caa2f336961cab28e435ee"
+  },
+  "C:\\Works\\LocalCloud\\backend\\app\\dependencies.py": {
+    "mtime": 1779713122.5055442,
+    "ast_hash": "818ebc0b296b6bc8b8ee563d84b1e603",
+    "semantic_hash": "818ebc0b296b6bc8b8ee563d84b1e603"
+  },
+  "C:\\Works\\LocalCloud\\backend\\app\\exception_handlers.py": {
+    "mtime": 1779713913.8642235,
+    "ast_hash": "d00cd4b722a378d56585f6f7775f2600",
+    "semantic_hash": "d00cd4b722a378d56585f6f7775f2600"
+  },
+  "C:\\Works\\LocalCloud\\backend\\app\\lifecycle.py": {
+    "mtime": 1779713995.8358414,
+    "ast_hash": "572fffade6d9c12f1fbb4a89db91394a",
+    "semantic_hash": "572fffade6d9c12f1fbb4a89db91394a"
+  },
+  "C:\\Works\\LocalCloud\\backend\\app\\main.py": {
+    "mtime": 1779714067.8030732,
+    "ast_hash": "10c47efad6ad3f332d019ba9fb9be029",
+    "semantic_hash": "10c47efad6ad3f332d019ba9fb9be029"
+  },
+  "C:\\Works\\LocalCloud\\backend\\app\\middleware.py": {
+    "mtime": 1779714225.3083,
+    "ast_hash": "ecb5da380682c7f33830f4805cc70006",
+    "semantic_hash": "ecb5da380682c7f33830f4805cc70006"
+  },
+  "C:\\Works\\LocalCloud\\backend\\app\\__init__.py": {
+    "mtime": 1779785031.930259,
+    "ast_hash": "5de1980dee48c44fc3e850f3a8b673f6",
+    "semantic_hash": "5de1980dee48c44fc3e850f3a8b673f6"
+  },
+  "C:\\Works\\LocalCloud\\backend\\core\\config.py": {
+    "mtime": 1779714344.6487422,
+    "ast_hash": "bc6aa1585ef32e2e10dd3acbe74da0f2",
+    "semantic_hash": "bc6aa1585ef32e2e10dd3acbe74da0f2"
+  },
+  "C:\\Works\\LocalCloud\\backend\\core\\constants.py": {
+    "mtime": 1779714404.7171707,
+    "ast_hash": "447a9dd42786cc2af8caed5c3e24ef3f",
+    "semantic_hash": "447a9dd42786cc2af8caed5c3e24ef3f"
+  },
+  "C:\\Works\\LocalCloud\\backend\\core\\logging.py": {
+    "mtime": 1779714515.471999,
+    "ast_hash": "d9c789ddf3a3944ea7a1f491e9f7f918",
+    "semantic_hash": "d9c789ddf3a3944ea7a1f491e9f7f918"
+  },
+  "C:\\Works\\LocalCloud\\backend\\core\\__init__.py": {
+    "mtime": 1779395165.83,
+    "ast_hash": "67f3c766ed5138d06e65cd3ad4314274",
+    "semantic_hash": "67f3c766ed5138d06e65cd3ad4314274"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\client.py": {
+    "mtime": 1779574322.533571,
+    "ast_hash": "42be9cc57f64a2672e38255d7e18903d",
+    "semantic_hash": "42be9cc57f64a2672e38255d7e18903d"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\config.py": {
+    "mtime": 1779574322.541691,
+    "ast_hash": "2dd808393c54b648e41fd3608210293d",
+    "semantic_hash": "2dd808393c54b648e41fd3608210293d"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\constants.py": {
+    "mtime": 1779395165.83,
+    "ast_hash": "798f11415c89df3675e75f2bc84f69ca",
+    "semantic_hash": "798f11415c89df3675e75f2bc84f69ca"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\exceptions.py": {
+    "mtime": 1779395983.24,
+    "ast_hash": "516ee01c3f2c85f83691b88514369ee2",
+    "semantic_hash": "516ee01c3f2c85f83691b88514369ee2"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\health.py": {
+    "mtime": 1779574322.541691,
+    "ast_hash": "b806b2c27ac753044543bc09e8371c29",
+    "semantic_hash": "b806b2c27ac753044543bc09e8371c29"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\metadata.py": {
+    "mtime": 1779395165.83,
+    "ast_hash": "59e00f0f2b38d9125d6ff85f977c894e",
+    "semantic_hash": "59e00f0f2b38d9125d6ff85f977c894e"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\transactions.py": {
+    "mtime": 1779395165.83,
+    "ast_hash": "dcc03fcc0e4e4cea35821269100467fa",
+    "semantic_hash": "dcc03fcc0e4e4cea35821269100467fa"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\unit_of_work.py": {
+    "mtime": 1779395165.84,
+    "ast_hash": "cebb87c9f577302dffd21ab66acc7b43",
+    "semantic_hash": "cebb87c9f577302dffd21ab66acc7b43"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\__init__.py": {
+    "mtime": 1779574322.533571,
+    "ast_hash": "dd0b13df4a872772d94bd3379d9781c6",
+    "semantic_hash": "dd0b13df4a872772d94bd3379d9781c6"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\models\\audit.py": {
+    "mtime": 1779714993.693508,
+    "ast_hash": "8ca68efe88dd2561cb0663e2257e6d39",
+    "semantic_hash": "8ca68efe88dd2561cb0663e2257e6d39"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\models\\base.py": {
+    "mtime": 1779780290.4889026,
+    "ast_hash": "2518d7776548293357c60377c10f4aba",
+    "semantic_hash": "2518d7776548293357c60377c10f4aba"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\models\\enums.py": {
+    "mtime": 1779714825.1708035,
+    "ast_hash": "c92e8bbc331c1703f597a218b1fd7bc4",
+    "semantic_hash": "c92e8bbc331c1703f597a218b1fd7bc4"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\models\\filesystem.py": {
+    "mtime": 1779780811.1445246,
+    "ast_hash": "930fff346f5b1beb981826c15e772a23",
+    "semantic_hash": "930fff346f5b1beb981826c15e772a23"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\models\\links.py": {
+    "mtime": 1779781405.244263,
+    "ast_hash": "77eb5b6bbce0922f16e73dae80a4d6d6",
+    "semantic_hash": "77eb5b6bbce0922f16e73dae80a4d6d6"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\models\\mixins.py": {
+    "mtime": 1779781504.3006566,
+    "ast_hash": "139c2e3ce8ced5907eb75d480a1b44ed",
+    "semantic_hash": "139c2e3ce8ced5907eb75d480a1b44ed"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\models\\permissions.py": {
+    "mtime": 1779781923.666661,
+    "ast_hash": "ec7d8d8a615b700742e10011a264ed49",
+    "semantic_hash": "ec7d8d8a615b700742e10011a264ed49"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\models\\quotas.py": {
+    "mtime": 1779395165.83,
+    "ast_hash": "14952782a9557fccbe0a5be6a032c618",
+    "semantic_hash": "14952782a9557fccbe0a5be6a032c618"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\models\\registration.py": {
+    "mtime": 1779395165.83,
+    "ast_hash": "84ba1eafca06ee21dcbc65ec75081cdf",
+    "semantic_hash": "84ba1eafca06ee21dcbc65ec75081cdf"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\models\\roles.py": {
+    "mtime": 1779574322.5422132,
+    "ast_hash": "44898f813601d102f0ae997b5820d256",
+    "semantic_hash": "44898f813601d102f0ae997b5820d256"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\models\\tasks.py": {
+    "mtime": 1779395165.83,
+    "ast_hash": "73fca329697b56abf5d70281174217ff",
+    "semantic_hash": "73fca329697b56abf5d70281174217ff"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\models\\uploads.py": {
+    "mtime": 1779395165.83,
+    "ast_hash": "821d0b79d93f32a28333e5cdd58d9796",
+    "semantic_hash": "821d0b79d93f32a28333e5cdd58d9796"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\models\\users.py": {
+    "mtime": 1779574322.5432668,
+    "ast_hash": "1ecd2c244940b3effc0e2830d2a66b1d",
+    "semantic_hash": "1ecd2c244940b3effc0e2830d2a66b1d"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\models\\__init__.py": {
+    "mtime": 1779395165.83,
+    "ast_hash": "35849d5c1df035392e72f71f6336df57",
+    "semantic_hash": "35849d5c1df035392e72f71f6336df57"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\repositories\\audit.py": {
+    "mtime": 1779785683.750058,
+    "ast_hash": "ba3ce62acafed09230bf7b795a2ade48",
+    "semantic_hash": "ba3ce62acafed09230bf7b795a2ade48"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\repositories\\base.py": {
+    "mtime": 1779701737.2191975,
+    "ast_hash": "1bd7c92bf03fb66e33f07eb02ae23cc6",
+    "semantic_hash": "1bd7c92bf03fb66e33f07eb02ae23cc6"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\repositories\\files.py": {
+    "mtime": 1779652008.3735864,
+    "ast_hash": "5a0bf1a5c55eedce835f44d1f7f8f878",
+    "semantic_hash": "5a0bf1a5c55eedce835f44d1f7f8f878"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\repositories\\folders.py": {
+    "mtime": 1779652007.2094872,
+    "ast_hash": "0ff9732df0d4498d443cac807ca28de4",
+    "semantic_hash": "0ff9732df0d4498d443cac807ca28de4"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\repositories\\links.py": {
+    "mtime": 1779701747.8904507,
+    "ast_hash": "b1a30efe116a3fa6fa78c0c5003e05e1",
+    "semantic_hash": "b1a30efe116a3fa6fa78c0c5003e05e1"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\repositories\\nodes.py": {
+    "mtime": 1779703297.020432,
+    "ast_hash": "4228beadd761eb922e26503e50fd3dff",
+    "semantic_hash": "4228beadd761eb922e26503e50fd3dff"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\repositories\\parts.py": {
+    "mtime": 1779652003.72689,
+    "ast_hash": "e5f5978c0e6d5b6f3f46889ba5d8684c",
+    "semantic_hash": "e5f5978c0e6d5b6f3f46889ba5d8684c"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\repositories\\permissions.py": {
+    "mtime": 1779701747.829451,
+    "ast_hash": "25e8a9026e0295843b826df7e8a1959d",
+    "semantic_hash": "25e8a9026e0295843b826df7e8a1959d"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\repositories\\quotas.py": {
+    "mtime": 1779701835.146203,
+    "ast_hash": "6e159110e9f48d1d262a502945856255",
+    "semantic_hash": "6e159110e9f48d1d262a502945856255"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\repositories\\registration.py": {
+    "mtime": 1779651999.8681943,
+    "ast_hash": "403681147c6d4eb91898bfce835db97e",
+    "semantic_hash": "403681147c6d4eb91898bfce835db97e"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\repositories\\roles.py": {
+    "mtime": 1779701747.636463,
+    "ast_hash": "3cbae73a277828750ed42d6569be92b1",
+    "semantic_hash": "3cbae73a277828750ed42d6569be92b1"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\repositories\\sessions.py": {
+    "mtime": 1779807570.359818,
+    "ast_hash": "2a4c59de6cd0e217f3fbe428ac514b90",
+    "semantic_hash": "2a4c59de6cd0e217f3fbe428ac514b90"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\repositories\\tasks.py": {
+    "mtime": 1779668057.0214295,
+    "ast_hash": "cd0b345aed32490cd5b59c696f4aa689",
+    "semantic_hash": "cd0b345aed32490cd5b59c696f4aa689"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\repositories\\trash.py": {
+    "mtime": 1779724344.7523577,
+    "ast_hash": "23900793a8915993d36896f231250d80",
+    "semantic_hash": "23900793a8915993d36896f231250d80"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\repositories\\users.py": {
+    "mtime": 1779651992.9697824,
+    "ast_hash": "f2103d12829d7aebd70a92464bd7856b",
+    "semantic_hash": "f2103d12829d7aebd70a92464bd7856b"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\repositories\\versions.py": {
+    "mtime": 1779701747.767453,
+    "ast_hash": "8e53cb54f7a169f109479930a321556e",
+    "semantic_hash": "8e53cb54f7a169f109479930a321556e"
+  },
+  "C:\\Works\\LocalCloud\\backend\\database\\repositories\\__init__.py": {
+    "mtime": 1779652012.5859473,
+    "ast_hash": "b739c1bb65af8b7870b3113948a32873",
+    "semantic_hash": "b739c1bb65af8b7870b3113948a32873"
+  },
+  "C:\\Works\\LocalCloud\\backend\\migrations\\env.py": {
+    "mtime": 1779574322.544791,
+    "ast_hash": "50d4f2c213ba9dc5afd8ef60f8c8e395",
+    "semantic_hash": "50d4f2c213ba9dc5afd8ef60f8c8e395"
+  },
+  "C:\\Works\\LocalCloud\\backend\\migrations\\versions\\ac57ae7d7abd_initial_schema.py": {
+    "mtime": 1779574322.544791,
+    "ast_hash": "517e94911435fc2ebaf81bda1455dd45",
+    "semantic_hash": "517e94911435fc2ebaf81bda1455dd45"
+  },
+  "C:\\Works\\LocalCloud\\backend\\schemas\\audit.py": {
+    "mtime": 1779574376.2763019,
+    "ast_hash": "d04aee42099a9b9fd3c6e11f6caa27a4",
+    "semantic_hash": "d04aee42099a9b9fd3c6e11f6caa27a4"
+  },
+  "C:\\Works\\LocalCloud\\backend\\schemas\\auth.py": {
+    "mtime": 1779788509.094187,
+    "ast_hash": "ffc338658faf5d8691dcaa21d3f95250",
+    "semantic_hash": "ffc338658faf5d8691dcaa21d3f95250"
+  },
+  "C:\\Works\\LocalCloud\\backend\\schemas\\common.py": {
+    "mtime": 1779574376.2763019,
+    "ast_hash": "04dc48bd39dc5d7a2ddc3bc5e421a940",
+    "semantic_hash": "04dc48bd39dc5d7a2ddc3bc5e421a940"
+  },
+  "C:\\Works\\LocalCloud\\backend\\schemas\\files.py": {
+    "mtime": 1779574376.2763019,
+    "ast_hash": "e0bc9fb336ce888ec9c0fdbf187c6366",
+    "semantic_hash": "e0bc9fb336ce888ec9c0fdbf187c6366"
+  },
+  "C:\\Works\\LocalCloud\\backend\\schemas\\folders.py": {
+    "mtime": 1779574376.2763019,
+    "ast_hash": "1ab7e803d9337acea3cff69d291629e1",
+    "semantic_hash": "1ab7e803d9337acea3cff69d291629e1"
+  },
+  "C:\\Works\\LocalCloud\\backend\\schemas\\health.py": {
+    "mtime": 1779574376.2763019,
+    "ast_hash": "497907eaeb37da7e928ff995da4c85b8",
+    "semantic_hash": "497907eaeb37da7e928ff995da4c85b8"
+  },
+  "C:\\Works\\LocalCloud\\backend\\schemas\\nodes.py": {
+    "mtime": 1779574376.2763019,
+    "ast_hash": "9c17007987a85cb5d104bda0c5138401",
+    "semantic_hash": "9c17007987a85cb5d104bda0c5138401"
+  },
+  "C:\\Works\\LocalCloud\\backend\\schemas\\permissions.py": {
+    "mtime": 1779574376.2803154,
+    "ast_hash": "54089e07680f6eb8fb703161083712e0",
+    "semantic_hash": "54089e07680f6eb8fb703161083712e0"
+  },
+  "C:\\Works\\LocalCloud\\backend\\schemas\\public_links.py": {
+    "mtime": 1779574376.2803154,
+    "ast_hash": "245dcefcc35f7e26f3bb70664dcc98b4",
+    "semantic_hash": "245dcefcc35f7e26f3bb70664dcc98b4"
+  },
+  "C:\\Works\\LocalCloud\\backend\\schemas\\quotas.py": {
+    "mtime": 1779574376.2819073,
+    "ast_hash": "03959026a3300dbe813e2f1d40ede868",
+    "semantic_hash": "03959026a3300dbe813e2f1d40ede868"
+  },
+  "C:\\Works\\LocalCloud\\backend\\schemas\\registration.py": {
+    "mtime": 1779574376.282425,
+    "ast_hash": "e116c3878a5511ca708701d6d9d37511",
+    "semantic_hash": "e116c3878a5511ca708701d6d9d37511"
+  },
+  "C:\\Works\\LocalCloud\\backend\\schemas\\roles.py": {
+    "mtime": 1779574376.2833774,
+    "ast_hash": "6a99acf84275791d9e3ecd19c199abd8",
+    "semantic_hash": "6a99acf84275791d9e3ecd19c199abd8"
+  },
+  "C:\\Works\\LocalCloud\\backend\\schemas\\tasks.py": {
+    "mtime": 1779574376.2833774,
+    "ast_hash": "1a42f56296c299884fb8bca1b95d08a7",
+    "semantic_hash": "1a42f56296c299884fb8bca1b95d08a7"
+  },
+  "C:\\Works\\LocalCloud\\backend\\schemas\\trash.py": {
+    "mtime": 1779724451.2408817,
+    "ast_hash": "4d8c9981595fd18bc62b3158c9a3f07f",
+    "semantic_hash": "4d8c9981595fd18bc62b3158c9a3f07f"
+  },
+  "C:\\Works\\LocalCloud\\backend\\schemas\\uploads.py": {
+    "mtime": 1779807570.359818,
+    "ast_hash": "1c843544ca50a82f5fbcf37832110227",
+    "semantic_hash": "1c843544ca50a82f5fbcf37832110227"
+  },
+  "C:\\Works\\LocalCloud\\backend\\schemas\\users.py": {
+    "mtime": 1779574376.2833774,
+    "ast_hash": "5bd8298ecb138f6b581eabd07e217527",
+    "semantic_hash": "5bd8298ecb138f6b581eabd07e217527"
+  },
+  "C:\\Works\\LocalCloud\\backend\\schemas\\__init__.py": {
+    "mtime": 1779788530.788445,
+    "ast_hash": "98a6cdb55159d1d826b92d88fa52c80d",
+    "semantic_hash": "98a6cdb55159d1d826b92d88fa52c80d"
+  },
+  "C:\\Works\\LocalCloud\\backend\\security\\__init__.py": {
+    "mtime": 1779574322.5536888,
+    "ast_hash": "9fc3c371dc1685a6e5a2c9516d99175f",
+    "semantic_hash": "9fc3c371dc1685a6e5a2c9516d99175f"
+  },
+  "C:\\Works\\LocalCloud\\backend\\security\\cookies\\dto.py": {
+    "mtime": 1779574322.554238,
+    "ast_hash": "fb207896ca1865216245c0924264801a",
+    "semantic_hash": "fb207896ca1865216245c0924264801a"
+  },
+  "C:\\Works\\LocalCloud\\backend\\security\\cookies\\enums.py": {
+    "mtime": 1779574322.554238,
+    "ast_hash": "06cc15429f7ad3c40e52bab566b5b050",
+    "semantic_hash": "06cc15429f7ad3c40e52bab566b5b050"
+  },
+  "C:\\Works\\LocalCloud\\backend\\security\\cookies\\exceptions.py": {
+    "mtime": 1779574322.5547855,
+    "ast_hash": "e511b3a9c677b35d8eab00cbf7d8152f",
+    "semantic_hash": "e511b3a9c677b35d8eab00cbf7d8152f"
+  },
+  "C:\\Works\\LocalCloud\\backend\\security\\cookies\\service.py": {
+    "mtime": 1779574322.5553484,
+    "ast_hash": "8be81467b4cf89b69a6783e6c299b0da",
+    "semantic_hash": "8be81467b4cf89b69a6783e6c299b0da"
+  },
+  "C:\\Works\\LocalCloud\\backend\\security\\cookies\\validators.py": {
+    "mtime": 1779701707.157555,
+    "ast_hash": "137d6924ccc1c613d389759573388d23",
+    "semantic_hash": "137d6924ccc1c613d389759573388d23"
+  },
+  "C:\\Works\\LocalCloud\\backend\\security\\cookies\\__init__.py": {
+    "mtime": 1779574322.5542119,
+    "ast_hash": "8174e382d91c4af2cf6c1ea52d063780",
+    "semantic_hash": "8174e382d91c4af2cf6c1ea52d063780"
+  },
+  "C:\\Works\\LocalCloud\\backend\\security\\dependencies\\auth.py": {
+    "mtime": 1779574322.5564475,
+    "ast_hash": "6466e68809d11eb7f6806650cb28e1df",
+    "semantic_hash": "6466e68809d11eb7f6806650cb28e1df"
+  },
+  "C:\\Works\\LocalCloud\\backend\\security\\dependencies\\nodes.py": {
+    "mtime": 1779701816.1963024,
+    "ast_hash": "30c8f9ba6d6b1fb32be419f66550e7e2",
+    "semantic_hash": "30c8f9ba6d6b1fb32be419f66550e7e2"
+  },
+  "C:\\Works\\LocalCloud\\backend\\security\\dependencies\\users.py": {
+    "mtime": 1779701816.2614877,
+    "ast_hash": "7ea71cbcb4fa8b390d2072839960b5e8",
+    "semantic_hash": "7ea71cbcb4fa8b390d2072839960b5e8"
+  },
+  "C:\\Works\\LocalCloud\\backend\\security\\dependencies\\__init__.py": {
+    "mtime": 1779574322.555915,
+    "ast_hash": "c1a39af14c5983efed9a5996015a78c5",
+    "semantic_hash": "c1a39af14c5983efed9a5996015a78c5"
+  },
+  "C:\\Works\\LocalCloud\\backend\\security\\jwt\\dto.py": {
+    "mtime": 1779574322.558219,
+    "ast_hash": "0f20eabbb7ccbf825d08a615ab1561b1",
+    "semantic_hash": "0f20eabbb7ccbf825d08a615ab1561b1"
+  },
+  "C:\\Works\\LocalCloud\\backend\\security\\jwt\\enums.py": {
+    "mtime": 1779788436.55431,
+    "ast_hash": "64e8a6df3817451556900977e1007dce",
+    "semantic_hash": "64e8a6df3817451556900977e1007dce"
+  },
+  "C:\\Works\\LocalCloud\\backend\\security\\jwt\\exceptions.py": {
+    "mtime": 1779574322.5587385,
+    "ast_hash": "98491d77acf055694eeaed294606bae5",
+    "semantic_hash": "98491d77acf055694eeaed294606bae5"
+  },
+  "C:\\Works\\LocalCloud\\backend\\security\\jwt\\service.py": {
+    "mtime": 1779574322.5587385,
+    "ast_hash": "39436b5a42464f0ab794d3664de388d7",
+    "semantic_hash": "39436b5a42464f0ab794d3664de388d7"
+  },
+  "C:\\Works\\LocalCloud\\backend\\security\\jwt\\validators.py": {
+    "mtime": 1779574322.559278,
+    "ast_hash": "f1d9724309d587bd64d9e3c294c0dbe3",
+    "semantic_hash": "f1d9724309d587bd64d9e3c294c0dbe3"
+  },
+  "C:\\Works\\LocalCloud\\backend\\security\\jwt\\__init__.py": {
+    "mtime": 1779574322.5576515,
+    "ast_hash": "d03a30915fb4bfdc983139954c77c758",
+    "semantic_hash": "d03a30915fb4bfdc983139954c77c758"
+  },
+  "C:\\Works\\LocalCloud\\backend\\security\\password\\dto.py": {
+    "mtime": 1779574322.5597944,
+    "ast_hash": "6c6ef3b573de3015e6ade5262e72fbb1",
+    "semantic_hash": "6c6ef3b573de3015e6ade5262e72fbb1"
+  },
+  "C:\\Works\\LocalCloud\\backend\\security\\password\\enums.py": {
+    "mtime": 1779574322.5603154,
+    "ast_hash": "74919513322398f0bf3756e77e740851",
+    "semantic_hash": "74919513322398f0bf3756e77e740851"
+  },
+  "C:\\Works\\LocalCloud\\backend\\security\\password\\service.py": {
+    "mtime": 1779701707.221092,
+    "ast_hash": "0cde2269d7196a5c2d711158930e35d3",
+    "semantic_hash": "0cde2269d7196a5c2d711158930e35d3"
+  },
+  "C:\\Works\\LocalCloud\\backend\\security\\password\\validators.py": {
+    "mtime": 1779701707.2856998,
+    "ast_hash": "f7cab62c9bba613f33e458d9b4b7d952",
+    "semantic_hash": "f7cab62c9bba613f33e458d9b4b7d952"
+  },
+  "C:\\Works\\LocalCloud\\backend\\security\\password\\__init__.py": {
+    "mtime": 1779574322.5597944,
+    "ast_hash": "c6827582a2cd955c68f68823600be9d1",
+    "semantic_hash": "c6827582a2cd955c68f68823600be9d1"
+  },
+  "C:\\Works\\LocalCloud\\backend\\security\\permissions\\dto.py": {
+    "mtime": 1779574322.5603154,
+    "ast_hash": "e0ea8cb803575e0ff1c889aa40b0dff6",
+    "semantic_hash": "e0ea8cb803575e0ff1c889aa40b0dff6"
+  },
+  "C:\\Works\\LocalCloud\\backend\\security\\permissions\\enums.py": {
+    "mtime": 1779574322.561842,
+    "ast_hash": "6c257fd717d115f5665e892fde8a7a5d",
+    "semantic_hash": "6c257fd717d115f5665e892fde8a7a5d"
+  },
+  "C:\\Works\\LocalCloud\\backend\\security\\permissions\\exceptions.py": {
+    "mtime": 1779574322.561842,
+    "ast_hash": "82b4afbedf9bc4b2417c2d7d37557e96",
+    "semantic_hash": "82b4afbedf9bc4b2417c2d7d37557e96"
+  },
+  "C:\\Works\\LocalCloud\\backend\\security\\permissions\\protocols.py": {
+    "mtime": 1779574322.562369,
+    "ast_hash": "8fce84ede29ad13e3d16e98113994f9b",
+    "semantic_hash": "8fce84ede29ad13e3d16e98113994f9b"
+  },
+  "C:\\Works\\LocalCloud\\backend\\security\\permissions\\service.py": {
+    "mtime": 1779574322.562369,
+    "ast_hash": "ad15e7768807ad039e7afa62e78696f5",
+    "semantic_hash": "ad15e7768807ad039e7afa62e78696f5"
+  },
+  "C:\\Works\\LocalCloud\\backend\\security\\permissions\\validators.py": {
+    "mtime": 1779574322.562369,
+    "ast_hash": "a84e7d5dec825cf8431f60c16b500c0a",
+    "semantic_hash": "a84e7d5dec825cf8431f60c16b500c0a"
+  },
+  "C:\\Works\\LocalCloud\\backend\\security\\permissions\\__init__.py": {
+    "mtime": 1779574322.5603154,
+    "ast_hash": "847ba5cc024109d80815b4c9e7f07b0c",
+    "semantic_hash": "847ba5cc024109d80815b4c9e7f07b0c"
+  },
+  "C:\\Works\\LocalCloud\\backend\\services\\access.py": {
+    "mtime": 1779671246.3342001,
+    "ast_hash": "bd7e829297d7faef408d10b119673957",
+    "semantic_hash": "bd7e829297d7faef408d10b119673957"
+  },
+  "C:\\Works\\LocalCloud\\backend\\services\\audit.py": {
+    "mtime": 1779788893.4082294,
+    "ast_hash": "ef3bf26956ac3b833a197dabb5ba1422",
+    "semantic_hash": "ef3bf26956ac3b833a197dabb5ba1422"
+  },
+  "C:\\Works\\LocalCloud\\backend\\services\\auth.py": {
+    "mtime": 1779788891.6187477,
+    "ast_hash": "0c14b0bfac5a6f165198d6e7df2fcfb5",
+    "semantic_hash": "0c14b0bfac5a6f165198d6e7df2fcfb5"
+  },
+  "C:\\Works\\LocalCloud\\backend\\services\\downloads.py": {
+    "mtime": 1779725233.4259965,
+    "ast_hash": "cb3a98b85e2a09af883b2b0318c2ab23",
+    "semantic_hash": "cb3a98b85e2a09af883b2b0318c2ab23"
+  },
+  "C:\\Works\\LocalCloud\\backend\\services\\exceptions.py": {
+    "mtime": 1779671257.3193777,
+    "ast_hash": "9fe448366a639d1252fb6fb1fc2d5c47",
+    "semantic_hash": "9fe448366a639d1252fb6fb1fc2d5c47"
+  },
+  "C:\\Works\\LocalCloud\\backend\\services\\files.py": {
+    "mtime": 1779671258.4249384,
+    "ast_hash": "afef31b3e7ac8afd931be885e2151ad8",
+    "semantic_hash": "afef31b3e7ac8afd931be885e2151ad8"
+  },
+  "C:\\Works\\LocalCloud\\backend\\services\\folders.py": {
+    "mtime": 1779725400.392964,
+    "ast_hash": "f39910235b460f6d28bba44d5833f872",
+    "semantic_hash": "f39910235b460f6d28bba44d5833f872"
+  },
+  "C:\\Works\\LocalCloud\\backend\\services\\health.py": {
+    "mtime": 1779671260.9522388,
+    "ast_hash": "956d3ec718203b0586d6a316c9f39d8d",
+    "semantic_hash": "956d3ec718203b0586d6a316c9f39d8d"
+  },
+  "C:\\Works\\LocalCloud\\backend\\services\\nodes.py": {
+    "mtime": 1779703426.2643416,
+    "ast_hash": "bdf37a5fc6a4a51429fa1445f29738f7",
+    "semantic_hash": "bdf37a5fc6a4a51429fa1445f29738f7"
+  },
+  "C:\\Works\\LocalCloud\\backend\\services\\permissions.py": {
+    "mtime": 1779698867.4955893,
+    "ast_hash": "471352083d6eb201ebf541bb4e3c1d2d",
+    "semantic_hash": "471352083d6eb201ebf541bb4e3c1d2d"
+  },
+  "C:\\Works\\LocalCloud\\backend\\services\\public_links.py": {
+    "mtime": 1779703026.4216602,
+    "ast_hash": "216ad2590f48ca8070566bf6a0af54b7",
+    "semantic_hash": "216ad2590f48ca8070566bf6a0af54b7"
+  },
+  "C:\\Works\\LocalCloud\\backend\\services\\quotas.py": {
+    "mtime": 1779671267.2088883,
+    "ast_hash": "d3687b3f26565e7d5ab5054b290c4b69",
+    "semantic_hash": "d3687b3f26565e7d5ab5054b290c4b69"
+  },
+  "C:\\Works\\LocalCloud\\backend\\services\\registration.py": {
+    "mtime": 1779671268.5306919,
+    "ast_hash": "888bc73d81cb33d41c0c1110752d74a7",
+    "semantic_hash": "888bc73d81cb33d41c0c1110752d74a7"
+  },
+  "C:\\Works\\LocalCloud\\backend\\services\\roles.py": {
+    "mtime": 1779671269.8423834,
+    "ast_hash": "65ead4866276b8de9efcd74088189a58",
+    "semantic_hash": "65ead4866276b8de9efcd74088189a58"
+  },
+  "C:\\Works\\LocalCloud\\backend\\services\\tasks.py": {
+    "mtime": 1779703129.092997,
+    "ast_hash": "b806ba858e17e3b33ef86b4f908895fb",
+    "semantic_hash": "b806ba858e17e3b33ef86b4f908895fb"
+  },
+  "C:\\Works\\LocalCloud\\backend\\services\\trash.py": {
+    "mtime": 1779724716.93813,
+    "ast_hash": "c86c1e4f9f258f426ab2373e93d20c89",
+    "semantic_hash": "c86c1e4f9f258f426ab2373e93d20c89"
+  },
+  "C:\\Works\\LocalCloud\\backend\\services\\uploads.py": {
+    "mtime": 1779807570.359818,
+    "ast_hash": "52e45d69aa8f558b0e0a5c9c1cc68456",
+    "semantic_hash": "52e45d69aa8f558b0e0a5c9c1cc68456"
+  },
+  "C:\\Works\\LocalCloud\\backend\\services\\users.py": {
+    "mtime": 1779671275.3021464,
+    "ast_hash": "28808b2bc57b23cad004b7a1fdb7732f",
+    "semantic_hash": "28808b2bc57b23cad004b7a1fdb7732f"
+  },
+  "C:\\Works\\LocalCloud\\backend\\services\\__init__.py": {
+    "mtime": 1779671364.1253781,
+    "ast_hash": "8df5cc26caca20bed1ccee65c0ff5ecb",
+    "semantic_hash": "8df5cc26caca20bed1ccee65c0ff5ecb"
+  },
+  "C:\\Works\\LocalCloud\\backend\\storage\\buckets.py": {
+    "mtime": 1779574322.5634205,
+    "ast_hash": "2870a26aeaea9033c74d351b60595321",
+    "semantic_hash": "2870a26aeaea9033c74d351b60595321"
+  },
+  "C:\\Works\\LocalCloud\\backend\\storage\\client.py": {
+    "mtime": 1779574322.5634205,
+    "ast_hash": "ffd50e923eaee8a1478fec74e740fb2e",
+    "semantic_hash": "ffd50e923eaee8a1478fec74e740fb2e"
+  },
+  "C:\\Works\\LocalCloud\\backend\\storage\\config.py": {
+    "mtime": 1779574322.5634205,
+    "ast_hash": "0c55e66f7f2c91155347edce184e3b87",
+    "semantic_hash": "0c55e66f7f2c91155347edce184e3b87"
+  },
+  "C:\\Works\\LocalCloud\\backend\\storage\\constants.py": {
+    "mtime": 1779574322.5634205,
+    "ast_hash": "4921120ea52cc886d309e2c36aaeb968",
+    "semantic_hash": "4921120ea52cc886d309e2c36aaeb968"
+  },
+  "C:\\Works\\LocalCloud\\backend\\storage\\exceptions.py": {
+    "mtime": 1779574322.5649445,
+    "ast_hash": "f0c30a41d199153e49e1f454525d5c56",
+    "semantic_hash": "f0c30a41d199153e49e1f454525d5c56"
+  },
+  "C:\\Works\\LocalCloud\\backend\\storage\\health.py": {
+    "mtime": 1779574322.5649445,
+    "ast_hash": "aea844e01a1bf9edf69bd7363b5ab7f8",
+    "semantic_hash": "aea844e01a1bf9edf69bd7363b5ab7f8"
+  },
+  "C:\\Works\\LocalCloud\\backend\\storage\\integrity.py": {
+    "mtime": 1779574322.5649445,
+    "ast_hash": "9b8e254982b55f97c78433cbdf97f32e",
+    "semantic_hash": "9b8e254982b55f97c78433cbdf97f32e"
+  },
+  "C:\\Works\\LocalCloud\\backend\\storage\\keys.py": {
+    "mtime": 1779574322.5649445,
+    "ast_hash": "89d251d83e3397bfbb60c2bfd92df4b9",
+    "semantic_hash": "89d251d83e3397bfbb60c2bfd92df4b9"
+  },
+  "C:\\Works\\LocalCloud\\backend\\storage\\metadata.py": {
+    "mtime": 1779574322.5649445,
+    "ast_hash": "dacfcdec8920e3056c851f56fd311034",
+    "semantic_hash": "dacfcdec8920e3056c851f56fd311034"
+  },
+  "C:\\Works\\LocalCloud\\backend\\storage\\multipart.py": {
+    "mtime": 1779574322.5649445,
+    "ast_hash": "2cef1c89733e735001286717e1916436",
+    "semantic_hash": "2cef1c89733e735001286717e1916436"
+  },
+  "C:\\Works\\LocalCloud\\backend\\storage\\objects.py": {
+    "mtime": 1779574322.5649445,
+    "ast_hash": "690e2d0725ba6d104260ced98175cd7c",
+    "semantic_hash": "690e2d0725ba6d104260ced98175cd7c"
+  },
+  "C:\\Works\\LocalCloud\\backend\\storage\\presigned.py": {
+    "mtime": 1779671963.4126482,
+    "ast_hash": "c5632a6b03cda6b23cc74c63eded47e8",
+    "semantic_hash": "c5632a6b03cda6b23cc74c63eded47e8"
+  },
+  "C:\\Works\\LocalCloud\\backend\\storage\\service.py": {
+    "mtime": 1779574322.5649445,
+    "ast_hash": "7ce0be27ecf31bfee93505613180a22c",
+    "semantic_hash": "7ce0be27ecf31bfee93505613180a22c"
+  },
+  "C:\\Works\\LocalCloud\\backend\\storage\\types.py": {
+    "mtime": 1779574322.5649445,
+    "ast_hash": "b12f9fc5529ba6004c980dec1c63f76d",
+    "semantic_hash": "b12f9fc5529ba6004c980dec1c63f76d"
+  },
+  "C:\\Works\\LocalCloud\\backend\\storage\\__init__.py": {
+    "mtime": 1779574322.5634205,
+    "ast_hash": "d8aeeb3124608bdfc421df5d78cfd85f",
+    "semantic_hash": "d8aeeb3124608bdfc421df5d78cfd85f"
+  },
+  "C:\\Works\\LocalCloud\\backend\\workers\\app.py": {
+    "mtime": 1779671960.304815,
+    "ast_hash": "7d53c19f0cff10a2484fda488273f0a6",
+    "semantic_hash": "7d53c19f0cff10a2484fda488273f0a6"
+  },
+  "C:\\Works\\LocalCloud\\backend\\workers\\archives.py": {
+    "mtime": 1779784660.1762207,
+    "ast_hash": "ff6d4896c3ea0beaff8a46925fae30a9",
+    "semantic_hash": "ff6d4896c3ea0beaff8a46925fae30a9"
+  },
+  "C:\\Works\\LocalCloud\\backend\\workers\\cleanup.py": {
+    "mtime": 1779671958.4326394,
+    "ast_hash": "066347956870f4b1d440c0ed1119c11b",
+    "semantic_hash": "066347956870f4b1d440c0ed1119c11b"
+  },
+  "C:\\Works\\LocalCloud\\backend\\workers\\config.py": {
+    "mtime": 1779671957.490752,
+    "ast_hash": "9ff770b80683c17e50eb60b88655b69b",
+    "semantic_hash": "9ff770b80683c17e50eb60b88655b69b"
+  },
+  "C:\\Works\\LocalCloud\\backend\\workers\\constants.py": {
+    "mtime": 1779671956.6081781,
+    "ast_hash": "15390dedbfbf976bd18a6ceef2b24cbe",
+    "semantic_hash": "15390dedbfbf976bd18a6ceef2b24cbe"
+  },
+  "C:\\Works\\LocalCloud\\backend\\workers\\context.py": {
+    "mtime": 1779725852.294819,
+    "ast_hash": "d3f2a49d5ba9fdd61a2f6a4f005401e1",
+    "semantic_hash": "d3f2a49d5ba9fdd61a2f6a4f005401e1"
+  },
+  "C:\\Works\\LocalCloud\\backend\\workers\\dispatcher.py": {
+    "mtime": 1779671954.4413238,
+    "ast_hash": "16e13d109a38cf0d6cb55d3df69ec52f",
+    "semantic_hash": "16e13d109a38cf0d6cb55d3df69ec52f"
+  },
+  "C:\\Works\\LocalCloud\\backend\\workers\\exceptions.py": {
+    "mtime": 1779671953.3353548,
+    "ast_hash": "fbc475f67bc0d7831c086de595c3eb25",
+    "semantic_hash": "fbc475f67bc0d7831c086de595c3eb25"
+  },
+  "C:\\Works\\LocalCloud\\backend\\workers\\health.py": {
+    "mtime": 1779671952.317895,
+    "ast_hash": "449fc08eacf2169970c598b5b3af49ee",
+    "semantic_hash": "449fc08eacf2169970c598b5b3af49ee"
+  },
+  "C:\\Works\\LocalCloud\\backend\\workers\\integrity.py": {
+    "mtime": 1779671951.3525283,
+    "ast_hash": "971df3ad8e9c0c98b85c86250f6fc687",
+    "semantic_hash": "971df3ad8e9c0c98b85c86250f6fc687"
+  },
+  "C:\\Works\\LocalCloud\\backend\\workers\\lifecycle.py": {
+    "mtime": 1779671950.2718465,
+    "ast_hash": "de4a5ff8df66d407d613ffe5291001f1",
+    "semantic_hash": "de4a5ff8df66d407d613ffe5291001f1"
+  },
+  "C:\\Works\\LocalCloud\\backend\\workers\\previews.py": {
+    "mtime": 1779789371.9104328,
+    "ast_hash": "784fdf51c236b8884d0de28befec8e7d",
+    "semantic_hash": "784fdf51c236b8884d0de28befec8e7d"
+  },
+  "C:\\Works\\LocalCloud\\backend\\workers\\public_links.py": {
+    "mtime": 1779671949.11121,
+    "ast_hash": "60ae14aeafc0bffba5910245ebaff7de",
+    "semantic_hash": "60ae14aeafc0bffba5910245ebaff7de"
+  },
+  "C:\\Works\\LocalCloud\\backend\\workers\\quotas.py": {
+    "mtime": 1779671947.905583,
+    "ast_hash": "67828e84ca5d455640c05b29df4b96b2",
+    "semantic_hash": "67828e84ca5d455640c05b29df4b96b2"
+  },
+  "C:\\Works\\LocalCloud\\backend\\workers\\registry.py": {
+    "mtime": 1779671946.608011,
+    "ast_hash": "37a6745443dfc038acdaa9e4e2b00c33",
+    "semantic_hash": "37a6745443dfc038acdaa9e4e2b00c33"
+  },
+  "C:\\Works\\LocalCloud\\backend\\workers\\scheduler.py": {
+    "mtime": 1779671945.3067243,
+    "ast_hash": "d2ce0799486bd93fed08db0312a23571",
+    "semantic_hash": "d2ce0799486bd93fed08db0312a23571"
+  },
+  "C:\\Works\\LocalCloud\\backend\\workers\\tasks.py": {
+    "mtime": 1779671941.9239035,
+    "ast_hash": "6832d7dd590e1a2a696e1c5d2a7e2bda",
+    "semantic_hash": "6832d7dd590e1a2a696e1c5d2a7e2bda"
+  },
+  "C:\\Works\\LocalCloud\\backend\\workers\\types.py": {
+    "mtime": 1779671943.1487732,
+    "ast_hash": "8254ba0b9d80869e7cfdefe1cacc11f5",
+    "semantic_hash": "8254ba0b9d80869e7cfdefe1cacc11f5"
+  },
+  "C:\\Works\\LocalCloud\\backend\\workers\\uploads.py": {
+    "mtime": 1779667454.1525164,
+    "ast_hash": "bcef35b2eeb12f6e76b1465063619074",
+    "semantic_hash": "bcef35b2eeb12f6e76b1465063619074"
+  },
+  "C:\\Works\\LocalCloud\\backend\\workers\\__init__.py": {
+    "mtime": 1779667794.9493828,
+    "ast_hash": "ecb7135cd77384c49ed9e9efd5bc22a6",
+    "semantic_hash": "ecb7135cd77384c49ed9e9efd5bc22a6"
+  },
+  "C:\\Works\\LocalCloud\\backend\\README.md": {
+    "mtime": 1779303720.5,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  }
+}

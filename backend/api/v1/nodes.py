@@ -17,7 +17,7 @@ Attributes:
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Path, Query, status
+from fastapi import APIRouter, Depends, Path, Query, Response, status
 
 from api.dependencies import (
     get_downloads_service_dependency,
@@ -373,6 +373,33 @@ async def download_node(
     file_read = await files_service.get_file(node_id, user_id=current_user.id)
     request_data = FileDownloadRequest(file_id=file_read.id, force_download=force_download)
     return await downloads_service.create_file_download_url(request_data, user_id=current_user.id)
+
+
+@router.get(
+    "/{node_id}/thumbnail",
+    response_model=FileDownloadResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def get_node_thumbnail(
+    current_user: CurrentActiveUserDependency,
+    response: Response,
+    _: None = RequireReadNodeDependency,
+    node_id: UUID = Path(...),
+    downloads_service: DownloadsService = Depends(get_downloads_service_dependency),
+) -> FileDownloadResponse:
+    """Возвращает presigned URL для thumbnail или полного файла-изображения.
+
+    Если у файла есть готовый предпросмотр (preview_status=READY), возвращает
+    ссылку на preview-объект (~50 KB). Иначе — ссылку на полный файл.
+    Ответ кэшируется браузером на 4 минуты.
+    """
+
+    result = await downloads_service.create_thumbnail_url(
+        node_id=node_id,
+        user_id=current_user.id,
+    )
+    response.headers["Cache-Control"] = "private, max-age=240"
+    return result
 
 
 @router.get(

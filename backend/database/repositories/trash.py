@@ -15,7 +15,7 @@ from database.exceptions import (
     InvalidQueryError,
 )
 from database.models.enums import TrashItemStatus
-from database.models.filesystem import TrashItem
+from database.models.filesystem import FileSystemNode, TrashItem
 from database.repositories.base import BaseRepository
 from database.repositories.nodes import FileSystemNodeRepository
 
@@ -82,7 +82,8 @@ class TrashItemRepository(BaseRepository[TrashItem]):
             select(TrashItem)
             .where(TrashItem.id == entity_id)
             .options(
-                selectinload(TrashItem.node),
+                selectinload(TrashItem.node).selectinload(FileSystemNode.file),
+                selectinload(TrashItem.node).selectinload(FileSystemNode.folder),
                 selectinload(TrashItem.owner),
                 selectinload(TrashItem.deleter),
                 selectinload(TrashItem.original_parent),
@@ -146,7 +147,8 @@ class TrashItemRepository(BaseRepository[TrashItem]):
             select(TrashItem)
             .where(*conditions)
             .options(
-                selectinload(TrashItem.node),
+                selectinload(TrashItem.node).selectinload(FileSystemNode.file),
+                selectinload(TrashItem.node).selectinload(FileSystemNode.folder),
                 selectinload(TrashItem.owner),
                 selectinload(TrashItem.deleter),
                 selectinload(TrashItem.original_parent),
@@ -448,7 +450,8 @@ class TrashItemRepository(BaseRepository[TrashItem]):
             select(TrashItem)
             .where(and_(*conditions))
             .options(
-                selectinload(TrashItem.node),
+                selectinload(TrashItem.node).selectinload(FileSystemNode.file),
+                selectinload(TrashItem.node).selectinload(FileSystemNode.folder),
                 selectinload(TrashItem.owner),
                 selectinload(TrashItem.deleter),
                 selectinload(TrashItem.original_parent),
@@ -518,7 +521,8 @@ class TrashItemRepository(BaseRepository[TrashItem]):
             select(TrashItem)
             .where(and_(*conditions))
             .options(
-                selectinload(TrashItem.node),
+                selectinload(TrashItem.node).selectinload(FileSystemNode.file),
+                selectinload(TrashItem.node).selectinload(FileSystemNode.folder),
                 selectinload(TrashItem.owner),
                 selectinload(TrashItem.deleter),
                 selectinload(TrashItem.original_parent),
@@ -581,7 +585,8 @@ class TrashItemRepository(BaseRepository[TrashItem]):
             select(TrashItem)
             .where(and_(*conditions))
             .options(
-                selectinload(TrashItem.node),
+                selectinload(TrashItem.node).selectinload(FileSystemNode.file),
+                selectinload(TrashItem.node).selectinload(FileSystemNode.folder),
                 selectinload(TrashItem.owner),
                 selectinload(TrashItem.deleter),
                 selectinload(TrashItem.original_parent),
@@ -660,7 +665,8 @@ class TrashItemRepository(BaseRepository[TrashItem]):
             select(TrashItem)
             .where(and_(*conditions))
             .options(
-                selectinload(TrashItem.node),
+                selectinload(TrashItem.node).selectinload(FileSystemNode.file),
+                selectinload(TrashItem.node).selectinload(FileSystemNode.folder),
                 selectinload(TrashItem.owner),
                 selectinload(TrashItem.deleter),
                 selectinload(TrashItem.original_parent),
@@ -1261,7 +1267,8 @@ class TrashItemRepository(BaseRepository[TrashItem]):
             .join(self.nodes.model, TrashItem.node_id == self.nodes.model.id)
             .where(and_(*conditions))
             .options(
-                selectinload(TrashItem.node),
+                selectinload(TrashItem.node).selectinload(FileSystemNode.file),
+                selectinload(TrashItem.node).selectinload(FileSystemNode.folder),
                 selectinload(TrashItem.owner),
                 selectinload(TrashItem.deleter),
                 selectinload(TrashItem.original_parent),

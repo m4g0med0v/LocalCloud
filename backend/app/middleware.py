@@ -223,10 +223,10 @@ def install_middleware(app: FastAPI) -> None:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=[
-            "*",
+            "Accept",
+            "Content-Type",
             REQUEST_ID_HEADER,
             CORRELATION_ID_HEADER,
-            USER_AGENT_HEADER,
         ],
         expose_headers=[REQUEST_ID_HEADER, CORRELATION_ID_HEADER],
     )

@@ -313,7 +313,10 @@ class FileSystemNodeRepository(BaseRepository[FileSystemNode]):
 
         statement = (
             select(FileSystemNode)
-            .options(selectinload(FileSystemNode.file))
+            .options(
+                selectinload(FileSystemNode.file),
+                selectinload(FileSystemNode.folder),
+            )
             .where(*conditions)
             .order_by(self._get_order_by(sort_by, sort_direction))
             .offset(offset)
@@ -366,7 +369,10 @@ class FileSystemNodeRepository(BaseRepository[FileSystemNode]):
 
         statement = (
             select(FileSystemNode)
-            .options(selectinload(FileSystemNode.file))
+            .options(
+                selectinload(FileSystemNode.file),
+                selectinload(FileSystemNode.folder),
+            )
             .where(*conditions)
             .order_by(self._get_order_by(sort_by, sort_direction))
             .offset(offset)
@@ -478,6 +484,10 @@ class FileSystemNodeRepository(BaseRepository[FileSystemNode]):
             .where(
                 FileSystemNode.owner_id == owner_id,
                 FileSystemNode.is_deleted.is_(True),
+            )
+            .options(
+                selectinload(FileSystemNode.file),
+                selectinload(FileSystemNode.folder),
             )
             .order_by(self._get_order_by(sort_by, sort_direction))
             .offset(offset)
@@ -1723,6 +1733,10 @@ class FileSystemNodeRepository(BaseRepository[FileSystemNode]):
         statement = (
             select(FileSystemNode)
             .where(and_(*conditions))
+            .options(
+                selectinload(FileSystemNode.file),
+                selectinload(FileSystemNode.folder),
+            )
             .order_by(self._get_order_by(sort_by, sort_direction))
             .offset(offset)
             .limit(limit)

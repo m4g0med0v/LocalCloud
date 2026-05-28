@@ -20,6 +20,9 @@ export const nodesApi = {
   download: (id: string) =>
     api.post<FileDownloadResponse>(`/nodes/${id}/download`, {}).then((r) => r.data),
 
+  thumbnail: (id: string) =>
+    api.get<FileDownloadResponse>(`/nodes/${id}/thumbnail`).then((r) => r.data),
+
   softDelete: (id: string) =>
     api.delete(`/nodes/${id}`).then((r) => r.data),
 

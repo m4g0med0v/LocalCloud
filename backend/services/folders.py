@@ -65,7 +65,6 @@ from services.exceptions import (
 logger = get_logger("services.folders")
 
 SERVICE_NAME = "folders"
-REPOSITORY_PAGE_LIMIT = 1000
 ALLOWED_FOLDER_SORT_FIELDS: set[str] = {
     "name",
     "created_at",
@@ -373,19 +372,23 @@ class FoldersService:
                     node.id,
                     include_deleted=include_deleted,
                 )
-                children = await self._load_child_nodes(
-                    uow=uow,
+                children = await uow.nodes.get_children(
                     parent_id=node.id,
                     include_deleted=include_deleted,
-                    sort_by=_normalize_node_sort_by(sort_by),
+                    offset=offset,
+                    limit=limit,
+                    sort_by=cast(Any, _normalize_node_sort_by(sort_by)),
                     sort_direction=_sort_direction(sort_desc),
+                )
+                total = await uow.nodes.count_children(
+                    parent_id=node.id,
+                    include_deleted=include_deleted,
                 )
                 breadcrumbs = await uow.nodes.get_breadcrumbs(
                     node_id=node.id,
                     include_self=True,
                     include_deleted=include_deleted,
                 )
-                page_children = children[offset : offset + limit]
                 content = FolderContentRead(
                     folder=FolderRead.model_validate(_folder_snapshot(folder)),
                     breadcrumbs=[
@@ -394,9 +397,9 @@ class FoldersService:
                     ],
                     items=[
                         NodeListItem.model_validate(_node_snapshot(item))
-                        for item in page_children
+                        for item in children
                     ],
-                    total=len(children),
+                    total=total,
                 )
 
             if content is None:
@@ -500,15 +503,32 @@ class FoldersService:
                         details={"service": SERVICE_NAME, "operation": operation},
                     )
 
-                folders = await self._load_folders(
-                    uow=uow,
+                folders = await uow.folders.list_user_folders(
                     owner_id=resolved_owner_id,
                     parent_id=parent_id,
                     include_deleted=include_deleted,
+                    offset=offset,
+                    limit=limit,
                     sort_by=_normalize_folder_sort_by(sort_by),
                     sort_direction=_sort_direction(sort_desc),
                 )
-                page = _folders_page(folders, limit=limit, offset=offset)
+                total = await uow.folders.count_user_folders_filtered(
+                    owner_id=resolved_owner_id,
+                    parent_id=parent_id,
+                    include_deleted=include_deleted,
+                )
+                page = PageResponse(
+                    items=[
+                        FolderListItem.model_validate(_folder_snapshot(f))
+                        for f in folders
+                    ],
+                    meta=PageMeta(
+                        limit=limit,
+                        offset=offset,
+                        total=total,
+                        count=len(folders),
+                    ),
+                )
 
             if page is None:
                 raise _empty_result_error(operation)
@@ -947,17 +967,36 @@ class FoldersService:
                         details={"service": SERVICE_NAME, "operation": operation},
                     )
 
-                folders = await self._search_all_folders(
-                    uow=uow,
+                folders = await uow.folders.search_folders(
                     owner_id=resolved_owner_id,
-                    parent_id=parent_id,
                     query=query,
+                    parent_id=parent_id,
                     include_deleted=include_deleted,
                     color=color,
+                    offset=offset,
+                    limit=limit,
                     sort_by=_normalize_folder_sort_by(sort_by),
                     sort_direction=_sort_direction(sort_desc),
                 )
-                page = _folders_page(folders, limit=limit, offset=offset)
+                total = await uow.folders.count_search_results(
+                    owner_id=resolved_owner_id,
+                    query=query,
+                    parent_id=parent_id,
+                    include_deleted=include_deleted,
+                    color=color,
+                )
+                page = PageResponse(
+                    items=[
+                        FolderListItem.model_validate(_folder_snapshot(f))
+                        for f in folders
+                    ],
+                    meta=PageMeta(
+                        limit=limit,
+                        offset=offset,
+                        total=total,
+                        count=len(folders),
+                    ),
+                )
 
             if page is None:
                 raise _empty_result_error(operation)
@@ -1213,145 +1252,6 @@ class FoldersService:
                 exc, operation=operation, message=message
             ) from exc
 
-    async def _load_folders(
-        self,
-        *,
-        uow: Any,
-        owner_id: UUID,
-        parent_id: UUID | None,
-        include_deleted: bool,
-        sort_by: FolderSortField,
-        sort_direction: NodeSortDirection,
-    ) -> list[Folder]:
-        """Загружает все папки пользователя батчами.
-
-        Последовательно запрашивает страницы из репозитория до тех пор, пока размер
-        очередного батча не станет меньше REPOSITORY_PAGE_LIMIT.
-
-        Args:
-            uow: Unit of Work с репозиторием папок.
-            owner_id: Идентификатор владельца папок.
-            parent_id: Идентификатор родительской папки. Если None, загружаются
-                корневые папки.
-            include_deleted: Нужно ли включать удаленные папки.
-            sort_by: Поле сортировки папок.
-            sort_direction: Направление сортировки.
-
-        Returns:
-            Полный список загруженных папок.
-        """
-
-        folders: list[Folder] = []
-        offset = 0
-
-        while True:
-            chunk = await uow.folders.list_user_folders(
-                owner_id=owner_id,
-                parent_id=parent_id,
-                include_deleted=include_deleted,
-                offset=offset,
-                limit=REPOSITORY_PAGE_LIMIT,
-                sort_by=sort_by,
-                sort_direction=sort_direction,
-            )
-            folders.extend(chunk)
-            if len(chunk) < REPOSITORY_PAGE_LIMIT:
-                return folders
-            offset += REPOSITORY_PAGE_LIMIT
-
-    async def _search_all_folders(
-        self,
-        *,
-        uow: Any,
-        owner_id: UUID,
-        query: str | None,
-        parent_id: UUID | None,
-        include_deleted: bool,
-        color: str | None,
-        sort_by: FolderSortField,
-        sort_direction: NodeSortDirection,
-    ) -> list[Folder]:
-        """Ищет все папки пользователя батчами.
-
-        Последовательно запрашивает страницы результатов поиска до тех пор, пока
-        размер очередного батча не станет меньше REPOSITORY_PAGE_LIMIT.
-
-        Args:
-            uow: Unit of Work с репозиторием папок.
-            owner_id: Идентификатор владельца папок.
-            query: Поисковая строка. Может быть None.
-            parent_id: Идентификатор родительской папки для ограничения поиска.
-            include_deleted: Нужно ли включать удаленные папки.
-            color: Фильтр по цвету папки.
-            sort_by: Поле сортировки папок.
-            sort_direction: Направление сортировки.
-
-        Returns:
-            Полный список найденных папок.
-        """
-
-        folders: list[Folder] = []
-        offset = 0
-
-        while True:
-            chunk = await uow.folders.search_folders(
-                owner_id=owner_id,
-                query=query,
-                parent_id=parent_id,
-                include_deleted=include_deleted,
-                color=color,
-                offset=offset,
-                limit=REPOSITORY_PAGE_LIMIT,
-                sort_by=sort_by,
-                sort_direction=sort_direction,
-            )
-            folders.extend(chunk)
-            if len(chunk) < REPOSITORY_PAGE_LIMIT:
-                return folders
-            offset += REPOSITORY_PAGE_LIMIT
-
-    async def _load_child_nodes(
-        self,
-        *,
-        uow: Any,
-        parent_id: UUID,
-        include_deleted: bool,
-        sort_by: str,
-        sort_direction: NodeSortDirection,
-    ) -> list[FileSystemNode]:
-        """Загружает все дочерние узлы папки батчами.
-
-        Последовательно запрашивает дочерние узлы из репозитория до тех пор, пока
-        размер очередного батча не станет меньше REPOSITORY_PAGE_LIMIT.
-
-        Args:
-            uow: Unit of Work с репозиторием узлов.
-            parent_id: Идентификатор родительской папки.
-            include_deleted: Нужно ли включать удаленные узлы.
-            sort_by: Поле сортировки узлов.
-            sort_direction: Направление сортировки.
-
-        Returns:
-            Полный список дочерних узлов.
-        """
-
-        nodes: list[FileSystemNode] = []
-        offset = 0
-
-        while True:
-            chunk = await uow.nodes.get_children(
-                parent_id=parent_id,
-                include_deleted=include_deleted,
-                offset=offset,
-                limit=REPOSITORY_PAGE_LIMIT,
-                sort_by=sort_by,
-                sort_direction=sort_direction,
-            )
-            nodes.extend(chunk)
-            if len(chunk) < REPOSITORY_PAGE_LIMIT:
-                return nodes
-            offset += REPOSITORY_PAGE_LIMIT
-
     async def _safe_log_folder_event(
         self,
         *,
@@ -1524,39 +1424,6 @@ def _task_snapshot(task: BackgroundTask) -> dict[str, Any]:
         "id": task.id,
         "status": task.status,
     }
-
-
-def _folders_page(
-    folders: list[Folder],
-    *,
-    limit: int,
-    offset: int,
-) -> PageResponse[FolderListItem]:
-    """Формирует страницу папок из полного списка.
-
-    Args:
-        folders: Полный список папок.
-        limit: Максимальное количество элементов на странице.
-        offset: Смещение начала страницы.
-
-    Returns:
-        Ответ со списком элементов текущей страницы и метаданными пагинации.
-    """
-
-    page_folders = folders[offset : offset + limit]
-    items = [
-        FolderListItem.model_validate(_folder_snapshot(folder))
-        for folder in page_folders
-    ]
-    return PageResponse(
-        items=items,
-        meta=PageMeta(
-            limit=limit,
-            offset=offset,
-            total=len(folders),
-            count=len(items),
-        ),
-    )
 
 
 def _ensure_folder_node(node: FileSystemNode, *, operation: str) -> None:

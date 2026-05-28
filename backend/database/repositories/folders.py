@@ -1125,6 +1125,141 @@ class FolderRepository(BaseRepository[Folder]):
     # Подсчёты
     # ------------------------------------------------------------------
 
+    async def count_user_folders_filtered(
+        self,
+        *,
+        owner_id: uuid.UUID,
+        parent_id: uuid.UUID | None = None,
+        include_deleted: bool = False,
+    ) -> int:
+        """Возвращает количество папок пользователя с фильтром по родительской папке.
+
+        Если `parent_id=None`, считаются только корневые папки. Если `parent_id`
+        указан, считаются папки внутри указанной родительской папки.
+
+        Args:
+            owner_id: Идентификатор владельца папок.
+            parent_id: Идентификатор родительской папки или `None` для корня.
+            include_deleted: Учитывать ли удалённые папки.
+
+        Returns:
+            Количество папок.
+
+        Raises:
+            RepositoryError: Если произошла ошибка при выполнении SQL-запроса.
+        """
+
+        conditions: list[Any] = [
+            FileSystemNode.owner_id == owner_id,
+            FileSystemNode.node_type == NodeType.FOLDER,
+        ]
+
+        if parent_id is None:
+            conditions.append(FileSystemNode.parent_id.is_(None))
+        else:
+            conditions.append(FileSystemNode.parent_id == parent_id)
+
+        if not include_deleted:
+            conditions.append(FileSystemNode.is_deleted.is_(False))
+
+        try:
+            statement = (
+                select(func.count(Folder.id))
+                .join(FileSystemNode, FileSystemNode.id == Folder.node_id)
+                .where(*conditions)
+            )
+
+            result = await self.session.execute(statement)
+
+            return int(result.scalar_one() or 0)
+
+        except SQLAlchemyError as exc:
+            raise self._repository_error(
+                operation="count_user_folders_filtered",
+                reason=str(exc),
+                details={
+                    "owner_id": str(owner_id),
+                    "parent_id": str(parent_id) if parent_id else None,
+                    "include_deleted": include_deleted,
+                },
+                cause=exc,
+            ) from exc
+
+    async def count_search_results(
+        self,
+        *,
+        owner_id: uuid.UUID,
+        query: str | None = None,
+        parent_id: uuid.UUID | None = None,
+        include_deleted: bool = False,
+        color: str | None = None,
+    ) -> int:
+        """Возвращает количество папок, соответствующих критериям поиска.
+
+        Использует те же фильтры, что и `search_folders`, без пагинации.
+
+        Args:
+            owner_id: Идентификатор владельца папок.
+            query: Поисковая строка.
+            parent_id: Ограничение поиска конкретной родительской папкой.
+            include_deleted: Учитывать ли удалённые папки.
+            color: Цветовая метка для фильтрации.
+
+        Returns:
+            Количество совпадающих папок.
+
+        Raises:
+            RepositoryError: Если произошла ошибка при выполнении SQL-запроса.
+        """
+
+        conditions: list[Any] = [
+            FileSystemNode.owner_id == owner_id,
+            FileSystemNode.node_type == NodeType.FOLDER,
+        ]
+
+        if parent_id is not None:
+            conditions.append(FileSystemNode.parent_id == parent_id)
+
+        if not include_deleted:
+            conditions.append(FileSystemNode.is_deleted.is_(False))
+
+        if color is not None:
+            conditions.append(Folder.color == self._normalize_color(color))
+
+        if query is not None and query.strip():
+            pattern = f"%{query.strip()}%"
+            conditions.append(
+                or_(
+                    FileSystemNode.name.ilike(pattern),
+                    FileSystemNode.path.ilike(pattern),
+                    Folder.description.ilike(pattern),
+                )
+            )
+
+        try:
+            statement = (
+                select(func.count(Folder.id))
+                .join(FileSystemNode, FileSystemNode.id == Folder.node_id)
+                .where(and_(*conditions))
+            )
+
+            result = await self.session.execute(statement)
+
+            return int(result.scalar_one() or 0)
+
+        except SQLAlchemyError as exc:
+            raise self._repository_error(
+                operation="count_search_results",
+                reason=str(exc),
+                details={
+                    "owner_id": str(owner_id),
+                    "parent_id": str(parent_id) if parent_id else None,
+                    "include_deleted": include_deleted,
+                    "color": color,
+                },
+                cause=exc,
+            ) from exc
+
     async def count_user_folders(
         self,
         *,

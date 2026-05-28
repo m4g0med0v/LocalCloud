@@ -255,25 +255,25 @@ class FileSystemNode(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin)
         "User",
         foreign_keys=[owner_id],
         back_populates="file_system_nodes",
-        lazy="selectin",
+        lazy="raise",
     )
 
     creator: Mapped[User | None] = relationship(
         "User",
         foreign_keys=[created_by],
-        lazy="selectin",
+        lazy="raise",
     )
 
     updater: Mapped[User | None] = relationship(
         "User",
         foreign_keys=[updated_by],
-        lazy="selectin",
+        lazy="raise",
     )
 
     deleter: Mapped[User | None] = relationship(
         "User",
         foreign_keys=[deleted_by],
-        lazy="selectin",
+        lazy="raise",
     )
 
     parent: Mapped[FileSystemNode | None] = relationship(
@@ -281,7 +281,7 @@ class FileSystemNode(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin)
         remote_side="FileSystemNode.id",
         foreign_keys=[parent_id],
         back_populates="children",
-        lazy="selectin",
+        lazy="raise",
     )
 
     children: Mapped[list[FileSystemNode]] = relationship(
@@ -290,7 +290,7 @@ class FileSystemNode(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin)
         back_populates="parent",
         cascade="all, delete-orphan",
         single_parent=True,
-        lazy="selectin",
+        lazy="raise",
     )
 
     file: Mapped[File | None] = relationship(
@@ -299,7 +299,7 @@ class FileSystemNode(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin)
         back_populates="node",
         uselist=False,
         cascade="all, delete-orphan",
-        lazy="selectin",
+        lazy="raise",
     )
 
     folder: Mapped[Folder | None] = relationship(
@@ -308,7 +308,7 @@ class FileSystemNode(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin)
         back_populates="node",
         uselist=False,
         cascade="all, delete-orphan",
-        lazy="selectin",
+        lazy="raise",
     )
 
     trash_item: Mapped[TrashItem | None] = relationship(
@@ -317,7 +317,7 @@ class FileSystemNode(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin)
         back_populates="node",
         uselist=False,
         cascade="all, delete-orphan",
-        lazy="selectin",
+        lazy="raise",
     )
 
     permissions: Mapped[list[NodePermission]] = relationship(
@@ -325,14 +325,14 @@ class FileSystemNode(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin)
         foreign_keys="NodePermission.node_id",
         back_populates="node",
         cascade="all, delete-orphan",
-        lazy="selectin",
+        lazy="raise",
     )
 
     public_links: Mapped[list[PublicLink]] = relationship(
         "PublicLink",
         foreign_keys="PublicLink.node_id",
         back_populates="node",
-        lazy="selectin",
+        lazy="raise",
     )
 
     # -------------------------------------------------------------------------
@@ -734,7 +734,7 @@ class File(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         "FileSystemNode",
         foreign_keys=[node_id],
         back_populates="file",
-        lazy="selectin",
+        lazy="raise",
     )
 
     versions: Mapped[list[FileVersion]] = relationship(
@@ -742,14 +742,14 @@ class File(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         foreign_keys="FileVersion.file_id",
         back_populates="file",
         cascade="all, delete-orphan",
-        lazy="selectin",
+        lazy="raise",
     )
 
     current_version: Mapped[FileVersion | None] = relationship(
         "FileVersion",
         foreign_keys=[current_version_id],
         post_update=True,
-        lazy="selectin",
+        lazy="raise",
     )
 
     # -------------------------------------------------------------------------
@@ -933,7 +933,7 @@ class Folder(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         "FileSystemNode",
         foreign_keys=[node_id],
         back_populates="folder",
-        lazy="selectin",
+        lazy="raise",
     )
 
     # -------------------------------------------------------------------------
@@ -1137,13 +1137,13 @@ class FileVersion(Base, UUIDPrimaryKeyMixin):
         "File",
         foreign_keys=[file_id],
         back_populates="versions",
-        lazy="selectin",
+        lazy="raise",
     )
 
     creator: Mapped[User | None] = relationship(
         "User",
         foreign_keys=[created_by],
-        lazy="selectin",
+        lazy="raise",
     )
 
     # -------------------------------------------------------------------------
@@ -1352,25 +1352,25 @@ class TrashItem(Base, UUIDPrimaryKeyMixin):
         "FileSystemNode",
         foreign_keys=[node_id],
         back_populates="trash_item",
-        lazy="selectin",
+        lazy="raise",
     )
 
     owner: Mapped[User] = relationship(
         "User",
         foreign_keys=[owner_id],
-        lazy="selectin",
+        lazy="raise",
     )
 
     deleter: Mapped[User | None] = relationship(
         "User",
         foreign_keys=[deleted_by],
-        lazy="selectin",
+        lazy="raise",
     )
 
     original_parent: Mapped[FileSystemNode | None] = relationship(
         "FileSystemNode",
         foreign_keys=[original_parent_id],
-        lazy="selectin",
+        lazy="raise",
     )
 
     # -------------------------------------------------------------------------
