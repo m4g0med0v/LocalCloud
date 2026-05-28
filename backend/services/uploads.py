@@ -37,6 +37,8 @@ from database import DatabaseError, UnitOfWorkFactory, create_unit_of_work_facto
 from database.models.enums import (
     AuditAction,
     AuditResourceType,
+    BackgroundTaskStatus,
+    BackgroundTaskType,
     FilePreviewStatus,
     FileProcessingStatus,
     NodeType,
@@ -766,6 +768,8 @@ class UploadsService:
                 )
 
                 extension = _filename_extension(upload_session.file_name)
+                _mime = (upload_session.mime_type or "").lower()
+                _needs_preview = _mime.startswith("image/")
                 file = await uow.files.create_file_with_node(
                     owner_id=upload_session.user_id,
                     parent_id=upload_session.parent_node_id,
@@ -779,13 +783,28 @@ class UploadsService:
                     checksum_algorithm=upload_session.checksum_algorithm,
                     storage_status=StorageObjectStatus.AVAILABLE,
                     processing_status=FileProcessingStatus.READY,
-                    preview_status=FilePreviewStatus.NOT_REQUIRED,
+                    preview_status=(
+                        FilePreviewStatus.PENDING
+                        if _needs_preview
+                        else FilePreviewStatus.NOT_REQUIRED
+                    ),
                     created_by=user_id,
                     check_owner_exists=False,
                     check_conflict=True,
                     flush=True,
                     refresh=True,
                 )
+                if _needs_preview:
+                    preview_task = await uow.tasks.create_task(
+                        task_type=BackgroundTaskType.GENERATE_FILE_PREVIEW,
+                        created_by=user_id,
+                        related_entity_type="file",
+                        related_entity_id=file.id,
+                        status=BackgroundTaskStatus.PENDING,
+                        flush=True,
+                        refresh=False,
+                    )
+                    preview_task.payload = {"file_id": str(file.id)}
                 version = await uow.versions.create_version(
                     file_id=file.id,
                     storage_bucket=upload_session.storage_bucket,
