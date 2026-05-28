@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { nodesApi } from "@/api/nodes";
 import type { NodeListItem } from "@/types/nodes";
 import type { FolderRead } from "@/types/folders";
@@ -18,7 +18,7 @@ export function useFileBrowser(nodeId?: string) {
       return { items: page.items, total: page.meta.total, folder: null, breadcrumbs: [] };
     },
     enabled: !nodeId,
-    staleTime: 30_000,
+    placeholderData: keepPreviousData,
   });
 
   const folderQuery = useQuery({
@@ -33,7 +33,7 @@ export function useFileBrowser(nodeId?: string) {
       };
     },
     enabled: !!nodeId,
-    staleTime: 30_000,
+    placeholderData: keepPreviousData,
   });
 
   return nodeId ? folderQuery : rootQuery;

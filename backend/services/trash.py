@@ -500,22 +500,19 @@ class TrashService:
                         refresh=False,
                     )
 
-                restored = await uow.trash.mark_restored(
+                await uow.trash.mark_restored(
                     trash_item_id=trash_item.id,
                     restored_by=actor_id,
                     restore_node=True,
                     recursive=True,
                     flush=True,
-                    refresh=True,
+                    refresh=False,
                 )
-                restored.status = TrashItemStatus.RESTORED
-                restored.restore_available = False
-                node = restored.node
-                if node is not None and target_parent_id != node.parent_id:
-                    node.parent_id = target_parent_id
-                    await uow.nodes.refresh(node)
-                elif node is not None:
-                    await uow.nodes.refresh(node)
+                # Re-fetch after flush to get fresh updated_at (server-side
+                # onupdate) and ensure .node is accessible for snapshot
+                restored = await uow.trash.get_by_id(trash_item.id)
+                if restored is None:
+                    raise _empty_result_error(operation)
                 trash_snapshot = _trash_item_snapshot(restored)
                 node_snapshot = _node_snapshot(restored.node)
                 await uow.commit()
@@ -544,10 +541,12 @@ class TrashService:
         except ServiceError:
             raise
         except DatabaseError as exc:
+            logger.exception("restore failed", extra={"operation": operation})
             raise service_error_from_database(
                 exc, service=SERVICE_NAME, operation=operation
             ) from exc
         except Exception as exc:
+            logger.exception("restore failed", extra={"operation": operation})
             raise service_error_from_exception(
                 exc, service=SERVICE_NAME, operation=operation
             ) from exc

@@ -129,6 +129,12 @@ class FileSystemNode(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin)
             "is_deleted",
         ),
         Index(
+            "ix_fsn_parent_active_name",
+            "parent_id",
+            "name",
+            postgresql_where=text("is_deleted = false"),
+        ),
+        Index(
             "ix_file_system_nodes_owner_type_deleted",
             "owner_id",
             "node_type",

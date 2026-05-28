@@ -79,7 +79,7 @@ class FolderRepository(BaseRepository[Folder]):
         statement = (
             select(Folder)
             .where(Folder.id == folder_id)
-            .options(selectinload(Folder.node))
+            .options(selectinload(Folder.node).selectinload(FileSystemNode.file))
         )
 
         return await self.scalar_one_or_none(
@@ -139,7 +139,7 @@ class FolderRepository(BaseRepository[Folder]):
                 Folder.node_id == node_id,
                 FileSystemNode.node_type == NodeType.FOLDER,
             )
-            .options(selectinload(Folder.node))
+            .options(selectinload(Folder.node).selectinload(FileSystemNode.file))
         )
 
         if not include_deleted:
@@ -487,7 +487,7 @@ class FolderRepository(BaseRepository[Folder]):
                 FileSystemNode.owner_id == owner_id,
                 FileSystemNode.node_type == NodeType.FOLDER,
             )
-            .options(selectinload(Folder.node))
+            .options(selectinload(Folder.node).selectinload(FileSystemNode.file))
         )
 
         if parent_id is None:
@@ -581,7 +581,7 @@ class FolderRepository(BaseRepository[Folder]):
                 FileSystemNode.parent_id == parent_id,
                 FileSystemNode.node_type == NodeType.FOLDER,
             )
-            .options(selectinload(Folder.node))
+            .options(selectinload(Folder.node).selectinload(FileSystemNode.file))
         )
 
         if not include_deleted:
@@ -633,7 +633,7 @@ class FolderRepository(BaseRepository[Folder]):
                 FileSystemNode.node_type == NodeType.FOLDER,
                 FileSystemNode.is_deleted.is_(True),
             )
-            .options(selectinload(Folder.node))
+            .options(selectinload(Folder.node).selectinload(FileSystemNode.file))
             .order_by(self._get_folder_order_by(sort_by, sort_direction))
             .offset(offset)
             .limit(limit)
@@ -1110,7 +1110,7 @@ class FolderRepository(BaseRepository[Folder]):
             select(Folder)
             .join(FileSystemNode, FileSystemNode.id == Folder.node_id)
             .where(and_(*conditions))
-            .options(selectinload(Folder.node))
+            .options(selectinload(Folder.node).selectinload(FileSystemNode.file))
             .order_by(self._get_folder_order_by(sort_by, sort_direction))
             .offset(offset)
             .limit(limit)

@@ -25,6 +25,8 @@ from enum import Enum
 from typing import Any, cast
 from uuid import UUID
 
+from sqlalchemy.exc import InvalidRequestError as _SAInvalidRequestError
+
 from core.logging import get_logger
 from database import DatabaseError, UnitOfWorkFactory, create_unit_of_work_factory
 from database.models.enums import (
@@ -1388,7 +1390,10 @@ def _node_snapshot(node: FileSystemNode) -> dict[str, Any]:
         авторами изменений, флагом удаления и временными метками узла.
     """
 
-    file = node.file if hasattr(node, "file") else None
+    try:
+        file = node.file
+    except _SAInvalidRequestError:
+        file = None
     return {
         "id": node.id,
         "owner_id": node.owner_id,

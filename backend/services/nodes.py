@@ -29,6 +29,8 @@ from typing import Any, cast
 from uuid import UUID
 
 from core.logging import get_logger
+from sqlalchemy.exc import InvalidRequestError as _SAInvalidRequestError
+
 from database import DatabaseError, UnitOfWorkFactory, create_unit_of_work_factory
 from database.models.enums import (
     AuditAction,
@@ -568,7 +570,7 @@ class NodesService:
                         refresh=False,
                     )
 
-                await uow.refresh(node)
+                node = await uow.nodes.get_required_by_id(node_id)
                 snapshot = _node_snapshot(node)
                 await uow.commit()
 
@@ -786,17 +788,14 @@ class NodesService:
         """
 
         async def move_to_trash(uow: Any) -> FileSystemNode:
-            trash_item = await uow.trash.create_trash_item(
+            await uow.trash.create_trash_item(
                 node_id=node_id,
                 deleted_by=actor_id,
                 soft_delete_node=True,
                 recursive_soft_delete=recursive,
                 flush=True,
-                refresh=True,
             )
-            node = trash_item.node
-            if node is None:
-                node = await uow.nodes.get_required_by_id(node_id)
+            node = await uow.nodes.get_required_by_id(node_id)
             await uow.nodes.refresh(node)
             return node
 
@@ -1401,7 +1400,10 @@ def _node_snapshot(node: FileSystemNode) -> dict[str, Any]:
         авторами изменений, признаком удаления и временными метками узла.
     """
 
-    file = node.file if hasattr(node, "file") else None
+    try:
+        file = node.file
+    except _SAInvalidRequestError:
+        file = None
     return {
         "id": node.id,
         "owner_id": node.owner_id,

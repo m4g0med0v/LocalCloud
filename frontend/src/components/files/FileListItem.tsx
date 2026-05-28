@@ -11,6 +11,21 @@ import type { NodeListItem } from "@/types/nodes";
 import type { SelectOpts } from "./FileGrid";
 import type { ShareBadge } from "@/hooks/useShareBadges";
 import { cn } from "@/lib/utils";
+import { queryClient } from "@/lib/query-client";
+import { nodesApi } from "@/api/nodes";
+
+function prefetchFolder(id: string) {
+  queryClient.prefetchQuery({
+    queryKey: ["nodes", id, "content"],
+    queryFn: () =>
+      nodesApi.content(id).then((c) => ({
+        items: c.items,
+        total: c.total,
+        folder: c.folder,
+        breadcrumbs: c.breadcrumbs,
+      })),
+  });
+}
 
 interface Props {
   item: NodeListItem;
@@ -109,6 +124,9 @@ export function FileListItem({
         }}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
+        onMouseEnter={() => {
+          if (item.node_type === "folder") prefetchFolder(item.id);
+        }}
         role="button"
         tabIndex={0}
         onKeyDown={(e) => {
