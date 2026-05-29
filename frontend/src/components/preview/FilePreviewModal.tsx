@@ -29,14 +29,88 @@ import type { NodeListItem } from "@/types/nodes";
 
 export type PreviewKind = "image" | "video" | "audio" | "pdf" | "text" | "markdown";
 
+// Extensions whose content is always human-readable text.
+// For extension-less files (Dockerfile, Makefile, …) name.split(".").pop()
+// returns the full lowercased filename, which is also matched here.
+const TEXT_EXTENSIONS = new Set([
+  // Plain text / docs
+  "txt", "log", "rst", "adoc", "tex", "csv", "tsv", "diff", "patch", "ics", "vcf",
+  // Web
+  "html", "htm", "css", "scss", "sass", "less",
+  // Data & config
+  "json", "jsonc", "json5", "yaml", "yml", "toml", "ini", "cfg", "conf",
+  "properties", "env", "lock", "plist",
+  // XML family
+  "xml", "xsl", "xslt", "rss", "atom",
+  // Shells
+  "sh", "bash", "zsh", "fish", "ps1", "bat", "cmd",
+  // JavaScript / TypeScript
+  "js", "mjs", "cjs", "ts", "jsx", "tsx",
+  // Web frameworks
+  "vue", "svelte", "astro",
+  // Python
+  "py", "pyw", "pyi",
+  // Ruby
+  "rb", "rake", "gemspec", "gemfile", "rakefile",
+  // Go
+  "go",
+  // Rust
+  "rs",
+  // JVM
+  "java", "kt", "kts", "groovy", "scala",
+  // C family
+  "c", "h", "cpp", "cc", "cxx", "hpp", "hxx", "cs",
+  // Other languages
+  "php", "swift", "dart", "lua", "r", "jl",
+  "ex", "exs", "hs", "elm", "clj", "cljs",
+  "ml", "mli", "fs", "fsx", "fsi", "pl", "pm",
+  // Query / schema
+  "sql", "psql", "graphql", "gql",
+  // DevOps / build
+  "dockerfile", "makefile", "vagrantfile", "procfile", "brewfile", "jenkinsfile",
+  "cmake", "tf", "tfvars", "hcl", "gradle", "bazel", "bzl",
+  // Dotfiles (ext = name after the last dot, or full name when no dot)
+  "gitignore", "gitattributes", "gitmodules",
+  "npmignore", "dockerignore", "editorconfig",
+  "eslintrc", "prettierrc", "babelrc", "stylelintrc",
+  "huskyrc", "lintstagedrc",
+]);
+
+// application/* MIME types whose payload is plaintext.
+const TEXT_APP_MIME = new Set([
+  "application/json", "application/ld+json", "application/manifest+json",
+  "application/geo+json", "application/xml", "application/xhtml+xml",
+  "application/atom+xml", "application/rss+xml",
+  "application/javascript", "application/ecmascript",
+  "application/typescript", "application/x-yaml",
+  "application/x-sh", "application/x-httpd-php",
+  "application/sql", "application/graphql",
+]);
+
 export function detectPreviewKind(name: string, mimeType?: string | null): PreviewKind | null {
   const ext = name.split(".").pop()?.toLowerCase() ?? "";
-  if (mimeType?.startsWith("image/") || ["jpg","jpeg","png","gif","webp","svg","bmp","ico"].includes(ext)) return "image";
-  if (mimeType?.startsWith("video/") || ["mp4","webm","ogv","mov","mkv"].includes(ext)) return "video";
-  if (mimeType?.startsWith("audio/") || ["mp3","wav","ogg","flac","aac","m4a","opus"].includes(ext)) return "audio";
-  if (ext === "pdf" || mimeType === "application/pdf") return "pdf";
-  if (ext === "md") return "markdown";
-  if (ext === "txt" || mimeType === "text/plain") return "text";
+
+  // If the extension is a known text format, skip MIME-type-based binary detection.
+  // This resolves ambiguous extensions like .ts (TypeScript vs MPEG-TS / video/mp2t).
+  const knownTextExt = TEXT_EXTENSIONS.has(ext);
+
+  if (!knownTextExt) {
+    if (mimeType?.startsWith("image/")) return "image";
+    if (mimeType?.startsWith("video/")) return "video";
+    if (mimeType?.startsWith("audio/")) return "audio";
+    if (mimeType === "application/pdf") return "pdf";
+  }
+
+  // Extension-based checks are always authoritative for these specific formats.
+  if (["jpg","jpeg","png","gif","webp","svg","bmp","ico"].includes(ext)) return "image";
+  if (["mp4","webm","ogv","mov","mkv"].includes(ext)) return "video";
+  if (["mp3","wav","ogg","flac","aac","m4a","opus"].includes(ext)) return "audio";
+  if (ext === "pdf") return "pdf";
+  if (["md","mdx","markdown"].includes(ext) || mimeType === "text/markdown" || mimeType === "text/x-markdown") return "markdown";
+
+  const isTextMime = !!mimeType && (mimeType.startsWith("text/") || TEXT_APP_MIME.has(mimeType));
+  if (knownTextExt || isTextMime) return "text";
+
   return null;
 }
 

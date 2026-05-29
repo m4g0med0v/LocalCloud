@@ -1,0 +1,20 @@
+LocalCloud Sample Text File
+===========================
+
+This is a plain text file used to test the text viewer and editor.
+
+Line 1: The quick brown fox jumps over the lazy dog.
+Line 2: Pack my box with five dozen liquor jugs.
+Line 3: How valiantly did this judge quaff zesty kümmel?
+Line 4: Sphinx of black quartz, judge my vow.
+Line 5: The five boxing wizards jump quickly.
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod
+tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim
+veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea
+commodo consequat.
+
+    Indented block of text.
+    Second indented line.
+
+End of file.

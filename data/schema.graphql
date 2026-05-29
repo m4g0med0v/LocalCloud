@@ -1,0 +1,64 @@
+"""LocalCloud GraphQL schema"""
+
+scalar DateTime
+scalar UUID
+
+enum NodeType {
+  FILE
+  FOLDER
+}
+
+enum NodeVisibility {
+  PRIVATE
+  SHARED
+  PUBLIC
+}
+
+type User {
+  id: UUID!
+  email: String!
+  name: String!
+  role: String!
+  isActive: Boolean!
+  quota: UserQuota
+  createdAt: DateTime!
+}
+
+type UserQuota {
+  storageLimitBytes: Int!
+  usedBytes: Int!
+  usedPercent: Float!
+}
+
+type Node {
+  id: UUID!
+  name: String!
+  nodeType: NodeType!
+  visibility: NodeVisibility!
+  parent: Node
+  children: [Node!]
+  owner: User!
+  sizBytes: Int
+  mimeType: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type DownloadLink {
+  url: String!
+  expiresAt: DateTime!
+}
+
+type Query {
+  me: User
+  node(id: UUID!): Node
+  nodes(parentId: UUID, limit: Int = 50, offset: Int = 0): [Node!]!
+  search(query: String!, limit: Int = 20): [Node!]!
+}
+
+type Mutation {
+  renameNode(id: UUID!, name: String!): Node!
+  moveNode(id: UUID!, targetParentId: UUID): Node!
+  deleteNode(id: UUID!): Boolean!
+  createDownloadLink(nodeId: UUID!): DownloadLink!
+}
