@@ -1,0 +1,1 @@
+{"nodes": [{"id": "migrations_add_ix_fsn", "label": "Add FSN Index Migration", "file_type": "code", "source_file": "backend/migrations/versions/b3f1c2d4e5a6_add_ix_fsn_parent_active_name.py", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null}], "edges": [], "hyperedges": []}
