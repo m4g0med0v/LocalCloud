@@ -4,6 +4,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   AlertCircle,
+  Check,
   Download,
   ExternalLink,
   Loader2,
@@ -12,15 +13,18 @@ import {
   Minus,
   Music,
   Pause,
+  Pencil,
   Play,
   Plus,
   Volume2,
   VolumeX,
   X,
 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { nodesApi } from "@/api/nodes";
+import { uploadsApi } from "@/api/uploads";
 import type { NodeListItem } from "@/types/nodes";
 
 export type PreviewKind = "image" | "video" | "audio" | "pdf" | "text" | "markdown";
@@ -439,16 +443,22 @@ interface Props {
 
 export function FilePreviewModal({ item, mimeType, open, onClose }: Props) {
   const kind = detectPreviewKind(item.name, mimeType ?? item.file_mime_type);
+  const queryClient = useQueryClient();
 
   const [presignedUrl, setPresignedUrl] = useState<string | null>(null);
   const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
   const [pdfError, setPdfError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editContent, setEditContent] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [textContent, setTextContent] = useState<string | null>(null);
   const [posterUrl, setPosterUrl] = useState<string | null | undefined>(undefined);
   const [pdfLoaded, setPdfLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const blobRef = useRef<string | null>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
   const videoStreamUrl = kind === "video" ? nodesApi.streamUrl(item.id) : null;
 
   // Thumbnail for video / audio
@@ -506,7 +516,69 @@ export function FilePreviewModal({ item, mimeType, open, onClose }: Props) {
     };
   }, [open, item.id, kind]);
 
+  // Reset edit state whenever the modal closes or the item changes
+  useEffect(() => {
+    if (!open) { setEditing(false); setEditContent(""); setSaveError(null); }
+  }, [open, item.id]);
+
+  // Populate the contenteditable editor when edit mode opens
+  useEffect(() => {
+    if (!editing || !editorRef.current) return;
+    editorRef.current.innerText = textContent ?? "";
+    editorRef.current.focus();
+  }, [editing]);
+
   if (!kind) return null;
+
+  async function handleSave() {
+    if (!item.parent_id) { setSaveError("Невозможно сохранить файл в корне."); return; }
+    const content = editorRef.current?.innerText ?? editContent;
+    if (!content.length) { setSaveError("Файл не может быть пустым."); return; }
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const mType = kind === "markdown" ? "text/markdown" : "text/plain";
+      const blob = new Blob([content], { type: mType });
+
+      // Delete the old file first so the name is free for the replacement
+      await nodesApi.softDelete(item.id);
+
+      const session = await uploadsApi.create({
+        parent_node_id: item.parent_id,
+        filename: item.name,
+        file_size_bytes: blob.size,
+        parts_count: 1,
+        mime_type: mType,
+        part_size_bytes: blob.size,
+      });
+
+      const { parts } = await uploadsApi.getPresignedParts(session.id);
+      const part = parts[0];
+
+      const restricted = new Set(["content-length", "host", "connection", "transfer-encoding"]);
+      const safeHeaders: Record<string, string> = {};
+      for (const [k, v] of Object.entries(part.headers ?? {})) {
+        if (!restricted.has(k.toLowerCase())) safeHeaders[k] = v;
+      }
+
+      const resp = await fetch(part.url, { method: "PUT", body: blob, headers: safeHeaders });
+      if (!resp.ok) throw new Error(`Ошибка загрузки: ${resp.status}`);
+
+      const etag = (resp.headers.get("ETag") ?? resp.headers.get("etag") ?? "").replace(/"/g, "");
+      await uploadsApi.completePart(session.id, 1, { part_number: 1, etag, size_bytes: blob.size });
+      await uploadsApi.complete(session.id, {
+        upload_session_id: session.id,
+        parts: [{ part_number: 1, etag, size_bytes: blob.size }],
+      });
+
+      queryClient.invalidateQueries({ queryKey: ["nodes"] });
+      onClose();
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Не удалось сохранить файл.");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function triggerDownload() {
     let url = presignedUrl;
@@ -534,10 +606,35 @@ export function FilePreviewModal({ item, mimeType, open, onClose }: Props) {
           {/* Header */}
           <div className="flex shrink-0 items-center gap-2 border-b border-border bg-panel px-4 py-2.5">
             <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground" title={item.name}>{item.name}</span>
-            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={triggerDownload} title="Скачать">
-              <Download className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onClose} title="Закрыть">
+
+            {/* Edit toggle — only for loaded text/markdown, not while editing */}
+            {(kind === "text" || kind === "markdown") && textContent !== null && !loading && !error && !editing && (
+              <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" title="Редактировать"
+                onClick={() => { setEditContent(textContent); setEditing(true); setSaveError(null); }}>
+                <Pencil className="h-4 w-4" />
+              </Button>
+            )}
+
+            {/* Save / Cancel — only in edit mode */}
+            {editing && (
+              <>
+                {saveError && <span className="shrink-0 text-xs text-destructive">{saveError}</span>}
+                <Button size="sm" className="h-8 shrink-0 gap-1.5" onClick={handleSave} disabled={saving}>
+                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                  {saving ? "Сохранение…" : "Сохранить"}
+                </Button>
+                <Button variant="ghost" size="sm" className="h-8 shrink-0" onClick={() => { setEditing(false); setSaveError(null); }} disabled={saving}>
+                  Отмена
+                </Button>
+              </>
+            )}
+
+            {!editing && (
+              <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={triggerDownload} title="Скачать">
+                <Download className="h-4 w-4" />
+              </Button>
+            )}
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onClose} title="Закрыть" disabled={saving}>
               <X className="h-4 w-4" />
             </Button>
           </div>
@@ -593,7 +690,37 @@ export function FilePreviewModal({ item, mimeType, open, onClose }: Props) {
                   </div>
                 )}
 
-                {(kind === "text" || kind === "markdown") && textContent !== null && (
+                {(kind === "text" || kind === "markdown") && textContent !== null && editing && (
+                  <div className="flex h-full w-full overflow-auto font-mono text-sm leading-relaxed">
+                    {/* Line numbers are in the same scroll container — no sync needed */}
+                    <div
+                      className="select-none shrink-0 border-r border-border bg-background px-3 py-6 text-right text-muted-foreground"
+                      style={{ minWidth: `${String(editContent.split("\n").length).length + 2}ch` }}
+                      aria-hidden
+                    >
+                      {editContent.split("\n").map((_, i) => (
+                        <div key={i}>{i + 1}</div>
+                      ))}
+                    </div>
+                    <div
+                      ref={editorRef}
+                      contentEditable
+                      suppressContentEditableWarning
+                      spellCheck={false}
+                      onInput={() => setEditContent(editorRef.current?.innerText ?? "")}
+                      onPaste={(e) => {
+                        e.preventDefault();
+                        document.execCommand("insertText", false, e.clipboardData?.getData("text/plain") ?? "");
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Tab") { e.preventDefault(); document.execCommand("insertText", false, "  "); }
+                      }}
+                      className="min-w-0 flex-1 whitespace-pre-wrap break-words py-6 pl-4 pr-8 text-foreground focus:outline-none"
+                    />
+                  </div>
+                )}
+
+                {(kind === "text" || kind === "markdown") && textContent !== null && !editing && (
                   <div className="flex h-full w-full items-start justify-center overflow-auto p-6">
                     <div className="w-full max-w-4xl rounded-xl border border-border bg-card p-8 shadow-2xl">
                       {kind === "markdown" ? (
@@ -626,7 +753,22 @@ export function FilePreviewModal({ item, mimeType, open, onClose }: Props) {
                           {textContent}
                         </ReactMarkdown>
                       ) : (
-                        <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-foreground">{textContent}</pre>
+                        <div className="flex font-mono text-xs leading-relaxed text-foreground">
+                          <div
+                            className="select-none shrink-0 border-r border-border pr-3 text-right text-muted-foreground"
+                            style={{ minWidth: `${String(textContent.split("\n").length).length + 2}ch` }}
+                            aria-hidden
+                          >
+                            {textContent.split("\n").map((_, i) => (
+                              <div key={i}>{i + 1}</div>
+                            ))}
+                          </div>
+                          <div className="min-w-0 flex-1 pl-4">
+                            {textContent.split("\n").map((line, i) => (
+                              <div key={i} className="whitespace-pre-wrap break-words">{line || " "}</div>
+                            ))}
+                          </div>
+                        </div>
                       )}
                     </div>
                   </div>

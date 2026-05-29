@@ -1,11 +1,10 @@
 import { NavLink, Outlet } from "react-router-dom";
-import { Users, ClipboardList, ScrollText, ListTodo, HardDrive } from "lucide-react";
+import { Users, ClipboardList, ScrollText, ListTodo } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const TABS = [
   { to: "/admin/users", label: "Пользователи", icon: Users },
   { to: "/admin/registration", label: "Заявки", icon: ClipboardList },
-  { to: "/admin/quota-requests", label: "Квоты", icon: HardDrive },
   { to: "/admin/audit", label: "Аудит", icon: ScrollText },
   { to: "/admin/tasks", label: "Задачи", icon: ListTodo },
 ];

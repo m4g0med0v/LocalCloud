@@ -14,6 +14,7 @@ import { FileActionBar } from "@/components/files/FileActionBar";
 import { FileMultiActionBar } from "@/components/files/FileMultiActionBar";
 import { DropZone } from "@/components/files/DropZone";
 import { CreateFolderDialog } from "@/components/files/CreateFolderDialog";
+import { FilePreviewModal, detectPreviewKind } from "@/components/preview/FilePreviewModal";
 import { Button } from "@/components/ui/button";
 import { useInfoPanel } from "@/contexts/infoPanel";
 import {
@@ -52,12 +53,40 @@ export function FilesPage() {
   const [filter, setFilter] = useState<FileFilter>("all");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const lastSelectedIdRef = useRef<string | null>(null);
+  const [spacePreviewItem, setSpacePreviewItem] = useState<NodeListItem | null>(null);
 
   // Derive selected items from fresh query data so renames/updates reflect immediately
   const selectedItems = useMemo<NodeListItem[]>(
     () => (data?.items ?? []).filter((i) => selectedIds.has(i.id)),
     [selectedIds, data?.items],
   );
+
+  // Keep a ref so the keydown handler always sees the latest selection without
+  // needing to re-register on every selection change.
+  const selectedItemsRef = useRef<NodeListItem[]>([]);
+  selectedItemsRef.current = selectedItems;
+
+  // Spacebar quick-look: open preview when exactly one previewable file is selected.
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key !== " ") return;
+      const target = e.target as HTMLElement;
+      if (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+      if (target.isContentEditable) return;
+      if (target.closest('[role="dialog"]')) return;
+
+      const items = selectedItemsRef.current;
+      if (items.length !== 1) return;
+      const item = items[0];
+      if (!detectPreviewKind(item.name, item.file_mime_type)) return;
+
+      e.preventDefault();
+      setSpacePreviewItem(item);
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   // On every navigation: pre-select a file from search state, or clear selection
   useEffect(() => {
@@ -334,6 +363,14 @@ export function FilesPage() {
         parentNodeId={parentNodeId}
         currentNodeId={nodeId ?? null}
       />
+
+      {spacePreviewItem && (
+        <FilePreviewModal
+          item={spacePreviewItem}
+          open
+          onClose={() => setSpacePreviewItem(null)}
+        />
+      )}
     </div>
   );
 }
