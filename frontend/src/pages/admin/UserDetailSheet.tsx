@@ -30,18 +30,18 @@ const STATUS_LABELS: Record<UserStatus, string> = {
 };
 
 const STATUS_COLORS: Record<UserStatus, string> = {
-  pending: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
-  active: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
-  blocked: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
-  rejected: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400",
-  deleted: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-500",
+  pending: "bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-900/30 dark:text-amber-400 dark:ring-amber-500/20",
+  active: "bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20 dark:bg-green-900/30 dark:text-green-400 dark:ring-green-500/20",
+  blocked: "bg-red-50 text-red-700 ring-1 ring-inset ring-red-600/20 dark:bg-red-900/30 dark:text-red-400 dark:ring-red-500/20",
+  rejected: "bg-zinc-100 text-zinc-600 ring-1 ring-inset ring-zinc-500/20 dark:bg-zinc-800 dark:text-zinc-400 dark:ring-zinc-500/20",
+  deleted: "bg-zinc-100 text-zinc-500 ring-1 ring-inset ring-zinc-500/10 dark:bg-zinc-800 dark:text-zinc-500 dark:ring-zinc-500/20",
 };
 
 const RESULT_COLORS: Record<string, string> = {
-  success: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
-  failure: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
-  denied: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
-  warning: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
+  success: "bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20 dark:bg-green-900/30 dark:text-green-400 dark:ring-green-500/20",
+  failure: "bg-red-50 text-red-700 ring-1 ring-inset ring-red-600/20 dark:bg-red-900/30 dark:text-red-400 dark:ring-red-500/20",
+  denied: "bg-orange-50 text-orange-700 ring-1 ring-inset ring-orange-600/20 dark:bg-orange-900/30 dark:text-orange-400 dark:ring-orange-500/20",
+  warning: "bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-900/30 dark:text-amber-400 dark:ring-amber-500/20",
 };
 
 function fmtDate(iso: string | null, time = false) {

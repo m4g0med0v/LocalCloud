@@ -48,10 +48,11 @@ function TaskRow({ task }: { task: UploadTask }) {
 }
 
 export function UploadPanel() {
-  const { tasks } = useUpload();
+  const { tasks, dismissAllDone } = useUpload();
   if (!tasks.length) return null;
 
   const active = tasks.filter((t) => t.status === "uploading" || t.status === "pending").length;
+  const finished = tasks.filter((t) => t.status === "done" || t.status === "error").length;
 
   return (
     <div className="fixed bottom-4 right-4 z-50 w-72 rounded-xl border bg-card shadow-xl">
@@ -59,6 +60,15 @@ export function UploadPanel() {
         <p className="text-xs font-semibold">
           {active > 0 ? `Загрузка файлов (${active})` : "Загрузки"}
         </p>
+        {finished > 1 && (
+          <button
+            type="button"
+            onClick={dismissAllDone}
+            className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Закрыть завершённые
+          </button>
+        )}
       </div>
       <div className="max-h-52 overflow-y-auto px-3 pb-2 pt-1">
         {tasks.map((t) => (

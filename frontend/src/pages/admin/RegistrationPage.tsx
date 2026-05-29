@@ -24,10 +24,10 @@ const STATUS_LABELS: Record<RegistrationStatus, string> = {
 };
 
 const STATUS_COLORS: Record<RegistrationStatus, string> = {
-  pending: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
-  approved: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
-  rejected: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
-  cancelled: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400",
+  pending: "bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-900/30 dark:text-amber-400 dark:ring-amber-500/20",
+  approved: "bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20 dark:bg-green-900/30 dark:text-green-400 dark:ring-green-500/20",
+  rejected: "bg-red-50 text-red-700 ring-1 ring-inset ring-red-600/20 dark:bg-red-900/30 dark:text-red-400 dark:ring-red-500/20",
+  cancelled: "bg-zinc-100 text-zinc-600 ring-1 ring-inset ring-zinc-500/20 dark:bg-zinc-800 dark:text-zinc-400 dark:ring-zinc-500/20",
 };
 
 // ── Reject dialog ─────────────────────────────────────────────────────────────

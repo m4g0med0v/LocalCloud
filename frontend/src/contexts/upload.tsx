@@ -26,7 +26,8 @@ type Action =
   | { type: "PROGRESS"; id: string; progress: number }
   | { type: "DONE"; id: string }
   | { type: "ERROR"; id: string; error: string }
-  | { type: "DISMISS"; id: string };
+  | { type: "DISMISS"; id: string }
+  | { type: "DISMISS_ALL_DONE" };
 
 function reducer(state: UploadTask[], action: Action): UploadTask[] {
   switch (action.type) {
@@ -46,6 +47,8 @@ function reducer(state: UploadTask[], action: Action): UploadTask[] {
       );
     case "DISMISS":
       return state.filter((t) => t.id !== action.id);
+    case "DISMISS_ALL_DONE":
+      return state.filter((t) => t.status !== "done" && t.status !== "error");
     default:
       return state;
   }
@@ -55,6 +58,7 @@ interface UploadContextValue {
   tasks: UploadTask[];
   enqueue: (files: File[], parentNodeId: string | null, folderQueryKey: unknown[]) => void;
   dismiss: (id: string) => void;
+  dismissAllDone: () => void;
 }
 
 const UploadContext = createContext<UploadContextValue | null>(null);
@@ -172,8 +176,12 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "DISMISS", id });
   }, []);
 
+  const dismissAllDone = useCallback(() => {
+    dispatch({ type: "DISMISS_ALL_DONE" });
+  }, []);
+
   return (
-    <UploadContext.Provider value={{ tasks, enqueue, dismiss }}>
+    <UploadContext.Provider value={{ tasks, enqueue, dismiss, dismissAllDone }}>
       {children}
     </UploadContext.Provider>
   );

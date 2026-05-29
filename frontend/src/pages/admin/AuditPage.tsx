@@ -8,10 +8,10 @@ import type { AuditLog } from "@/types/audit";
 import { cn } from "@/lib/utils";
 
 const RESULT_COLORS: Record<string, string> = {
-  success: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
-  failure: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
-  denied: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
-  warning: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
+  success: "bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20 dark:bg-green-900/30 dark:text-green-400 dark:ring-green-500/20",
+  failure: "bg-red-50 text-red-700 ring-1 ring-inset ring-red-600/20 dark:bg-red-900/30 dark:text-red-400 dark:ring-red-500/20",
+  denied: "bg-orange-50 text-orange-700 ring-1 ring-inset ring-orange-600/20 dark:bg-orange-900/30 dark:text-orange-400 dark:ring-orange-500/20",
+  warning: "bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-900/30 dark:text-amber-400 dark:ring-amber-500/20",
 };
 
 const RESULT_LABELS: Record<string, string> = {

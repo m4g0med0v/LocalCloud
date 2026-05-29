@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Download,
   FolderInput,
@@ -54,9 +55,11 @@ interface Props {
 
 export function FileActionBar({ item, folderQueryKey, onDeselect }: Props) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { openInfo } = useInfoPanel();
   const { downloadFolder, downloading } = useFolderDownload();
   const isFolderDownloading = downloading === item.id;
+  const [colorVersion, setColorVersion] = useState(0);
   const folderColor = item.node_type === "folder" ? getFolderColor(item.id) : null;
 
   const [renameOpen, setRenameOpen] = useState(false);
@@ -64,12 +67,18 @@ export function FileActionBar({ item, folderQueryKey, onDeselect }: Props) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [colorOpen, setColorOpen] = useState(false);
+  const [isFileDownloading, setIsFileDownloading] = useState(false);
 
-  function handleDownload() {
+  async function handleDownload() {
     if (item.node_type === "folder") {
       downloadFolder(item.id, item.name);
     } else {
-      triggerDownload(item.id, item.name);
+      setIsFileDownloading(true);
+      try {
+        await triggerDownload(item.id, item.name);
+      } finally {
+        setIsFileDownloading(false);
+      }
     }
   }
 
@@ -145,10 +154,10 @@ export function FileActionBar({ item, folderQueryKey, onDeselect }: Props) {
                 variant="ghost"
                 size="icon"
                 className="h-7 w-7"
-                disabled={isFolderDownloading}
+                disabled={isFolderDownloading || isFileDownloading}
                 onClick={handleDownload}
               >
-                {isFolderDownloading ? (
+                {isFolderDownloading || isFileDownloading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <Download className="h-4 w-4" />
@@ -235,7 +244,10 @@ export function FileActionBar({ item, folderQueryKey, onDeselect }: Props) {
           onOpenChange={setColorOpen}
           nodeId={item.id}
           currentColor={folderColor}
-          onColorChange={() => {}}
+          onColorChange={() => {
+            setColorVersion((v) => v + 1);
+            queryClient.invalidateQueries({ queryKey: folderQueryKey });
+          }}
         />
       )}
     </>

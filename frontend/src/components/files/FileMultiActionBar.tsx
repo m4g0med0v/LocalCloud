@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X, Trash2 } from "lucide-react";
+import { Loader2, X, Trash2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -99,7 +99,14 @@ export function FileMultiActionBar({ items, folderQueryKey, onDeselect }: Props)
               disabled={deleting}
               onClick={handleDeleteAll}
             >
-              {deleting ? "Удаление…" : "Удалить"}
+              {deleting ? (
+                <>
+                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                  Удаление…
+                </>
+              ) : (
+                "Удалить"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
