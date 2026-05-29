@@ -267,6 +267,8 @@ class StorageObjectManager:
         *,
         bucket: str,
         object_key: str,
+        offset: int = 0,
+        length: int = 0,
     ) -> Any:
         """Возвращает поток ответа MinIO.
 
@@ -276,6 +278,8 @@ class StorageObjectManager:
         Args:
             bucket: Имя bucket.
             object_key: Ключ объекта.
+            offset: Смещение в байтах от начала объекта (для range-запросов).
+            length: Количество байт для чтения; 0 — до конца объекта.
 
         Returns:
             Поток ответа MinIO.
@@ -294,6 +298,8 @@ class StorageObjectManager:
                 self.client.get_raw_client().get_object,
                 normalized_bucket,
                 normalized_object_key,
+                offset=offset,
+                length=length,
                 operation_name="get_object_stream",
             )
         except StorageError as exc:

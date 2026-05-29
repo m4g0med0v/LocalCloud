@@ -17,8 +17,10 @@ export const nodesApi = {
   rename: (id: string, name: string) =>
     api.post(`/nodes/${id}/rename`, { name }).then((r) => r.data),
 
-  download: (id: string) =>
-    api.post<FileDownloadResponse>(`/nodes/${id}/download`, {}).then((r) => r.data),
+  download: (id: string, forceDownload = true) =>
+    api
+      .post<FileDownloadResponse>(`/nodes/${id}/download`, {}, { params: { force_download: forceDownload } })
+      .then((r) => r.data),
 
   thumbnail: (id: string) =>
     api.get<FileDownloadResponse>(`/nodes/${id}/thumbnail`).then((r) => r.data),
@@ -38,4 +40,6 @@ export const nodesApi = {
 
   move: (id: string, data: NodeMoveRequest) =>
     api.post(`/nodes/${id}/move`, data).then((r) => r.data),
+
+  streamUrl: (id: string) => `/api/v1/nodes/${id}/stream`,
 };

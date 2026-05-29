@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import mimetypes
 from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime, timedelta
 from enum import Enum
@@ -57,6 +58,29 @@ logger = get_logger("services.downloads")
 
 SERVICE_NAME = "downloads"
 ZIP_MIME_TYPE = "application/zip"
+
+# mimetypes.guess_type relies on the OS registry and misses several formats on
+# Windows (notably .mkv, .m4v, .flac, .opus, .m4a).  With X-Content-Type-Options:
+# nosniff in place, Chrome strictly enforces the declared Content-Type and will
+# refuse to play anything declared as application/octet-stream.  These overrides
+# are only applied as a last resort when both the DB value and mimetypes fail.
+_MIME_FALLBACKS: dict[str, str] = {
+    "mkv": "video/x-matroska",
+    "m4v": "video/mp4",
+    "flv": "video/x-flv",
+    "wmv": "video/x-ms-wmv",
+    "avi": "video/x-msvideo",
+    "3gp": "video/3gpp",
+    "3g2": "video/3gpp2",
+    "ts": "video/mp2t",
+    "m2ts": "video/mp2t",
+    "m4a": "audio/mp4",
+    "flac": "audio/flac",
+    "opus": "audio/ogg",
+    "wma": "audio/x-ms-wma",
+    "aif": "audio/aiff",
+    "aiff": "audio/aiff",
+}
 
 
 class DownloadsService:
@@ -176,6 +200,86 @@ class DownloadsService:
                 exc,
                 operation=operation,
                 message="Failed to create thumbnail URL.",
+            ) from exc
+
+    async def stream_file(
+        self,
+        *,
+        node_id: UUID,
+        user_id: UUID,
+        offset: int = 0,
+        length: int = 0,
+    ) -> tuple[Any, str, str, int]:
+        """Проверяет доступ и возвращает поток файла из хранилища.
+
+        Возвращает кортеж (stream, mime_type, filename, size_bytes).
+        Вызывающий код обязан закрыть stream через close() и release_conn().
+
+        Args:
+            node_id: Идентификатор узла файловой системы.
+            user_id: Идентификатор пользователя.
+            offset: Смещение в байтах для Range-запроса.
+            length: Количество байт для Range-запроса (0 — до конца).
+
+        Returns:
+            Кортеж (stream, mime_type, filename, total_size_bytes).
+        """
+
+        operation = "stream_file"
+        snapshot: dict[str, Any] | None = None
+
+        try:
+            async with self.uow_factory() as uow:
+                file = await uow.files.get_required_by_node_id(node_id)
+                node = _require_file_node(file, operation=operation)
+                await self.access_service.require_access(
+                    node_id=node.id,
+                    user_id=user_id,
+                    action=PermissionAction.READ,
+                    uow=uow,
+                )
+                _ensure_file_downloadable(file, operation=operation)
+                snapshot = _file_snapshot(file)
+
+            if snapshot is None:
+                raise _empty_result_error(operation)
+
+            filename: str = snapshot.get("name") or "file"
+            _ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+            mime_type: str = (
+                snapshot.get("mime_type")
+                or mimetypes.guess_type(filename)[0]
+                or _MIME_FALLBACKS.get(_ext)
+                or "application/octet-stream"
+            )
+            size_bytes: int = snapshot.get("size_bytes") or 0
+            bucket: str = snapshot["storage_bucket"]
+            object_key: str = snapshot["storage_key"]
+
+            stream = await self.storage_service.get_file_object_stream(
+                bucket=bucket,
+                object_key=object_key,
+                offset=offset,
+                length=length,
+            )
+            return stream, mime_type, filename, size_bytes
+
+        except StorageError as exc:
+            raise service_error_from_storage(
+                exc,
+                service=SERVICE_NAME,
+                operation=operation,
+                message="Failed to open file stream.",
+            ) from exc
+        except DatabaseError as exc:
+            raise self._database_error(exc, operation=operation) from exc
+        except ServiceError:
+            raise
+        except Exception as exc:
+            raise self._unexpected_error(
+                exc,
+                operation=operation,
+                message="Failed to stream file.",
             ) from exc
 
     async def create_file_download_url(
@@ -999,8 +1103,9 @@ def _download_response_headers(
             f'{disposition_type}; filename="{safe_filename}"'
         )
     }
-    if mime_type:
-        headers["response-content-type"] = mime_type
+    resolved_mime = mime_type or mimetypes.guess_type(filename)[0]
+    if resolved_mime:
+        headers["response-content-type"] = resolved_mime
     return headers
 
 

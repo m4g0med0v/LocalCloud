@@ -4,6 +4,7 @@ import { Link2, Users } from "lucide-react";
 import { FileIcon } from "./FileIcon";
 import { ItemActions } from "./ItemActions";
 import { ItemContextMenu } from "./ItemContextMenu";
+import { FilePreviewModal, detectPreviewKind } from "@/components/preview/FilePreviewModal";
 import { getFolderColor, setFolderColor } from "./FolderColorDialog";
 import { formatBytes } from "@/hooks/useQuota";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -61,11 +62,14 @@ export function FileListItem({
 }: Props) {
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [folderColor, setFolderColorState] = useState<string | null>(
     () => (item.node_type === "folder" ? getFolderColor(item.id) : null),
   );
+
+  const canPreview = item.node_type === "file" && !!detectPreviewKind(item.name, mimeType ?? item.file_mime_type);
 
   function handleColorChange(color: string | null) {
     setFolderColor(item.id, color);
@@ -80,10 +84,13 @@ export function FileListItem({
   function handleDoubleClick() {
     if (item.node_type === "folder") {
       navigate(`/files/folders/${item.id}`);
+    } else if (canPreview) {
+      setPreviewOpen(true);
     }
   }
 
   return (
+    <>
     <ItemContextMenu
       item={item}
       folderQueryKey={folderQueryKey}
@@ -92,6 +99,7 @@ export function FileListItem({
       isSelected={isSelected ?? false}
       selectedItems={selectedItems}
       onSelect={onSelect}
+      onPreview={canPreview ? () => setPreviewOpen(true) : undefined}
     >
       <div
         className={cn(
@@ -192,9 +200,20 @@ export function FileListItem({
             folderColor={folderColor}
             onColorChange={handleColorChange}
             onOpenChange={setMenuOpen}
+            onPreview={canPreview ? () => setPreviewOpen(true) : undefined}
           />
         </div>
       </div>
     </ItemContextMenu>
+
+    {canPreview && (
+      <FilePreviewModal
+        item={item}
+        mimeType={mimeType}
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+      />
+    )}
+    </>
   );
 }

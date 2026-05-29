@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Download,
+  Eye,
   FolderInput,
   FolderOpen,
   Info,
@@ -11,6 +12,7 @@ import {
   Share2,
   Trash2,
 } from "lucide-react";
+import { detectPreviewKind } from "@/components/preview/FilePreviewModal";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -48,6 +50,7 @@ interface Props {
   isSelected?: boolean;
   selectedItems?: NodeListItem[];
   onSelect?: (item: NodeListItem, opts: SelectOpts) => void;
+  onPreview?: () => void;
   children: ReactNode;
 }
 
@@ -59,12 +62,14 @@ export function ItemContextMenu({
   isSelected,
   selectedItems,
   onSelect,
+  onPreview,
   children,
 }: Props) {
   const navigate = useNavigate();
   const { openInfo } = useInfoPanel();
   const { downloadFolder, downloading } = useFolderDownload();
   const isFolderDownloading = downloading === item.id;
+  const previewKind = item.node_type === "file" ? detectPreviewKind(item.name, item.file_mime_type) : null;
 
   const [renameOpen, setRenameOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
@@ -90,6 +95,16 @@ export function ItemContextMenu({
               <ContextMenuItem onClick={() => navigate(`/files/folders/${item.id}`)}>
                 <FolderOpen />
                 Открыть
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+            </>
+          )}
+
+          {previewKind && onPreview && (
+            <>
+              <ContextMenuItem onClick={onPreview}>
+                <Eye />
+                Просмотр
               </ContextMenuItem>
               <ContextMenuSeparator />
             </>

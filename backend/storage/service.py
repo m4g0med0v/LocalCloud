@@ -378,6 +378,8 @@ class StorageService:
         user_id: uuid.UUID | None = None,
         file_id: uuid.UUID | None = None,
         version_id: uuid.UUID | None = None,
+        offset: int = 0,
+        length: int = 0,
     ) -> Any:
         """Возвращает поток файла из хранилища.
 
@@ -408,6 +410,8 @@ class StorageService:
         return await self.objects.get_object_stream(
             bucket=resolved_bucket,
             object_key=resolved_object_key,
+            offset=offset,
+            length=length,
         )
 
     async def get_file_object_info(

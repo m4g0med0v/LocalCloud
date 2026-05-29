@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Download, FolderInput, Info, Loader2, MoreVertical, Palette, Pencil, Share2, Trash2 } from "lucide-react";
+import { Download, Eye, FolderInput, Info, Loader2, MoreVertical, Palette, Pencil, Share2, Trash2 } from "lucide-react";
+import { detectPreviewKind } from "@/components/preview/FilePreviewModal";
 import { RenameDialog } from "./RenameDialog";
 import { DeleteConfirmDialog } from "./DeleteConfirmDialog";
 import { ShareDialog } from "./ShareDialog";
@@ -34,12 +35,14 @@ interface Props {
   folderColor: string | null;
   onColorChange: (color: string | null) => void;
   onOpenChange?: (open: boolean) => void;
+  onPreview?: () => void;
 }
 
-export function ItemActions({ item, folderQueryKey, folderColor, onColorChange, onOpenChange }: Props) {
+export function ItemActions({ item, folderQueryKey, folderColor, onColorChange, onOpenChange, onPreview }: Props) {
   const { downloadFolder, downloading } = useFolderDownload();
   const { openInfo } = useInfoPanel();
   const isFolderDownloading = downloading === item.id;
+  const previewKind = item.node_type === "file" ? detectPreviewKind(item.name, item.file_mime_type) : null;
   const [menuOpen, setMenuOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
@@ -63,6 +66,12 @@ export function ItemActions({ item, folderQueryKey, folderColor, onColorChange, 
         <DropdownMenuContent align="end" className="w-40">
           {item.node_type === "file" && (
             <>
+              {previewKind && onPreview && (
+                <DropdownMenuItem onClick={onPreview}>
+                  <Eye className="mr-2 h-4 w-4" />
+                  Просмотр
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={() => triggerDownload(item.id, item.name)}>
                 <Download className="mr-2 h-4 w-4" />
                 Скачать

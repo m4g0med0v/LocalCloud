@@ -15,9 +15,11 @@ Attributes:
 """
 
 
+import mimetypes
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Path, Query, Response, status
+from fastapi import APIRouter, Depends, Path, Query, Request, Response, status
+from fastapi.responses import StreamingResponse
 
 from api.dependencies import (
     get_downloads_service_dependency,
@@ -373,6 +375,103 @@ async def download_node(
     file_read = await files_service.get_file(node_id, user_id=current_user.id)
     request_data = FileDownloadRequest(file_id=file_read.id, force_download=force_download)
     return await downloads_service.create_file_download_url(request_data, user_id=current_user.id)
+
+
+@router.get(
+    "/{node_id}/stream",
+    status_code=status.HTTP_200_OK,
+)
+async def stream_node(
+    request: Request,
+    current_user: CurrentActiveUserDependency,
+    _: None = RequireReadNodeDependency,
+    node_id: UUID = Path(...),
+    downloads_service: DownloadsService = Depends(get_downloads_service_dependency),
+) -> StreamingResponse:
+    """Стримит файл напрямую через backend с поддержкой Range-запросов.
+
+    Обходит все проблемы с заголовками presigned URL: Content-Type,
+    Content-Disposition, CORS. Поддерживает Range-запросы для перемотки видео.
+    """
+
+    range_header = request.headers.get("Range")
+    offset = 0
+    length = 0
+    status_code = 200
+    content_range: str | None = None
+
+    stream, mime_type, name, total_size = await downloads_service.stream_file(
+        node_id=node_id,
+        user_id=current_user.id,
+    )
+
+    if range_header and total_size > 0:
+        try:
+            unit, ranges = range_header.split("=", 1)
+            if unit.strip() == "bytes":
+                first_range = ranges.split(",")[0].strip()
+                start_str, end_str = first_range.split("-", 1)
+                start = int(start_str) if start_str else 0
+                end = int(end_str) if end_str else total_size - 1
+                end = min(end, total_size - 1)
+                offset = start
+                length = end - start + 1
+                status_code = 206
+                content_range = f"bytes {start}-{end}/{total_size}"
+        except Exception:
+            pass
+
+    # Only reopen the stream when the client needs data from a non-zero offset
+    # (i.e. seeking).  For offset=0 ranges (Chrome's initial Range: bytes=0- probe
+    # or a small first-chunk request), we reuse the already-open stream and cap
+    # the generator output to avoid a second MinIO round-trip.
+    gen_limit: int | None = None
+    if offset > 0:
+        stream.close()
+        stream.release_conn()
+        stream, mime_type, name, total_size = await downloads_service.stream_file(
+            node_id=node_id,
+            user_id=current_user.id,
+            offset=offset,
+            length=length,
+        )
+    elif 0 < length < total_size:
+        gen_limit = length
+
+    async def generator():
+        remaining = gen_limit
+        try:
+            for chunk in stream:
+                if remaining is not None:
+                    if len(chunk) >= remaining:
+                        yield chunk[:remaining]
+                        break
+                    yield chunk
+                    remaining -= len(chunk)
+                else:
+                    yield chunk
+        finally:
+            stream.close()
+            stream.release_conn()
+
+    headers: dict[str, str] = {
+        "Content-Disposition": f'inline; filename="{name}"',
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "private, max-age=300",
+    }
+    if content_range:
+        headers["Content-Range"] = content_range
+    if length > 0:
+        headers["Content-Length"] = str(length)
+    elif total_size > 0:
+        headers["Content-Length"] = str(total_size)
+
+    return StreamingResponse(
+        generator(),
+        status_code=status_code,
+        media_type=mime_type,
+        headers=headers,
+    )
 
 
 @router.get(
