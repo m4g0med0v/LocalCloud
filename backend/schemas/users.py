@@ -622,6 +622,21 @@ class UserQueryParams(PaginationParams):
         return value
 
 
+class AdminChangePasswordRequest(BaseSchema):
+    """Запрос администратора на смену пароля пользователя.
+
+    Attributes:
+        new_password: Новый пароль пользователя.
+    """
+
+    new_password: str = Field(
+        ...,
+        min_length=8,
+        max_length=128,
+        description="Новый пароль пользователя.",
+    )
+
+
 class UserWithRolesRead(UserRead):
     """Полное представление пользователя вместе с ролями.
 

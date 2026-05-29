@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, Path, status
 from api.dependencies import get_users_service_dependency
 from schemas.common import PageResponse
 from schemas.users import (
+    AdminChangePasswordRequest,
     CurrentUserRead,
     UserAdminUpdate,
     UserApproveRequest,
@@ -345,6 +346,40 @@ async def reject_user(
     return await users_service.reject_user(
         user_id,
         data,
+        actor_id=admin_user.id,
+    )
+
+
+@router.post(
+    "/{user_id}/change-password",
+    response_model=UserRead,
+    status_code=status.HTTP_200_OK,
+)
+async def admin_change_user_password(
+    data: AdminChangePasswordRequest,
+    admin_user: CurrentAdminUserDependency,
+    user_id: UUID = Path(...),
+    users_service: UsersService = Depends(get_users_service_dependency),
+) -> UserRead:
+    """Изменяет пароль пользователя администратором.
+
+    Args:
+        data: Данные с новым паролем пользователя.
+        admin_user: Текущий администратор, выполняющий смену пароля.
+        user_id: Уникальный идентификатор пользователя.
+        users_service: Сервис пользователей, выполняющий смену пароля.
+
+    Returns:
+        Данные пользователя после смены пароля.
+
+    Raises:
+        HTTPException: Если администратор не аутентифицирован, доступ запрещён,
+            пользователь не найден или пароль не соответствует требованиям.
+    """
+
+    return await users_service.change_password(
+        user_id,
+        data.new_password,
         actor_id=admin_user.id,
     )
 

@@ -23,4 +23,7 @@ export const usersApi = {
 
   delete: (id: string) =>
     api.delete<UserRead>(`/users/${id}`).then((r) => r.data),
+
+  changePassword: (id: string, new_password: string) =>
+    api.post<UserRead>(`/users/${id}/change-password`, { new_password }).then((r) => r.data),
 };

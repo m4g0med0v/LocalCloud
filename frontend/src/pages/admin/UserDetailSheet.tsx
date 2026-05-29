@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
+  KeyRound,
   ShieldCheck,
   ShieldOff,
   Trash2,
@@ -116,6 +117,8 @@ export function UserDetailSheet({ user, onClose }: Props) {
   const qc = useQueryClient();
   const [showBlockInput, setShowBlockInput] = useState(false);
   const [blockReason, setBlockReason] = useState("");
+  const [showPasswordInput, setShowPasswordInput] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
   const [editQuota, setEditQuota] = useState(false);
   const [quotaForm, setQuotaForm] = useState({
     storage_gb: "",
@@ -178,6 +181,16 @@ export function UserDetailSheet({ user, onClose }: Props) {
       onClose();
     },
     onError: () => toast.error("Не удалось удалить"),
+  });
+
+  const changePassword = useMutation({
+    mutationFn: () => usersApi.changePassword(user!.id, newPassword),
+    onSuccess: () => {
+      setShowPasswordInput(false);
+      setNewPassword("");
+      toast.success("Пароль изменён");
+    },
+    onError: () => toast.error("Не удалось изменить пароль"),
   });
 
   const updateQuota = useMutation({
@@ -532,6 +545,19 @@ export function UserDetailSheet({ user, onClose }: Props) {
                   Удалить
                 </Button>
               )}
+              {user?.status !== "deleted" && !showPasswordInput && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setShowPasswordInput(true);
+                    setShowBlockInput(false);
+                  }}
+                >
+                  <KeyRound className="mr-1.5 h-3.5 w-3.5" />
+                  Сменить пароль
+                </Button>
+              )}
             </div>
 
             {showBlockInput && (
@@ -560,6 +586,39 @@ export function UserDetailSheet({ user, onClose }: Props) {
                   onClick={() => {
                     setShowBlockInput(false);
                     setBlockReason("");
+                  }}
+                >
+                  Отмена
+                </Button>
+              </div>
+            )}
+
+            {showPasswordInput && (
+              <div className="mt-2 flex gap-2">
+                <Input
+                  type="password"
+                  placeholder="Новый пароль (мин. 8 символов)"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="h-8 flex-1 text-sm"
+                />
+                <Button
+                  size="sm"
+                  disabled={changePassword.isPending || newPassword.length < 8}
+                  onClick={() => changePassword.mutate()}
+                >
+                  {changePassword.isPending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    "Сохранить"
+                  )}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setShowPasswordInput(false);
+                    setNewPassword("");
                   }}
                 >
                   Отмена
