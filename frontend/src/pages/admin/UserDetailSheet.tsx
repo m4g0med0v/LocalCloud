@@ -30,18 +30,18 @@ const STATUS_LABELS: Record<UserStatus, string> = {
 };
 
 const STATUS_COLORS: Record<UserStatus, string> = {
-  pending: "bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-900/30 dark:text-amber-400 dark:ring-amber-500/20",
-  active: "bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20 dark:bg-green-900/30 dark:text-green-400 dark:ring-green-500/20",
-  blocked: "bg-red-50 text-red-700 ring-1 ring-inset ring-red-600/20 dark:bg-red-900/30 dark:text-red-400 dark:ring-red-500/20",
-  rejected: "bg-zinc-100 text-zinc-600 ring-1 ring-inset ring-zinc-500/20 dark:bg-zinc-800 dark:text-zinc-400 dark:ring-zinc-500/20",
-  deleted: "bg-zinc-100 text-zinc-500 ring-1 ring-inset ring-zinc-500/10 dark:bg-zinc-800 dark:text-zinc-500 dark:ring-zinc-500/20",
+  pending: "bg-amber-500 text-white dark:bg-amber-600",
+  active: "bg-green-600 text-white dark:bg-green-700",
+  blocked: "bg-red-600 text-white dark:bg-red-700",
+  rejected: "bg-zinc-500 text-white dark:bg-zinc-600",
+  deleted: "bg-zinc-400 text-white dark:bg-zinc-600",
 };
 
 const RESULT_COLORS: Record<string, string> = {
-  success: "bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20 dark:bg-green-900/30 dark:text-green-400 dark:ring-green-500/20",
-  failure: "bg-red-50 text-red-700 ring-1 ring-inset ring-red-600/20 dark:bg-red-900/30 dark:text-red-400 dark:ring-red-500/20",
-  denied: "bg-orange-50 text-orange-700 ring-1 ring-inset ring-orange-600/20 dark:bg-orange-900/30 dark:text-orange-400 dark:ring-orange-500/20",
-  warning: "bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-900/30 dark:text-amber-400 dark:ring-amber-500/20",
+  success: "bg-green-600 text-white dark:bg-green-700",
+  failure: "bg-red-600 text-white dark:bg-red-700",
+  denied: "bg-orange-600 text-white dark:bg-orange-700",
+  warning: "bg-amber-500 text-white dark:bg-amber-600",
 };
 
 function fmtDate(iso: string | null, time = false) {
@@ -238,7 +238,7 @@ export function UserDetailSheet({ user, onClose }: Props) {
               {user && (
                 <span
                   className={cn(
-                    "shrink-0 inline-flex rounded-full px-2 py-0.5 text-xs font-medium",
+                    "shrink-0 inline-flex rounded-full px-2 py-0.5 text-xs font-semibold",
                     STATUS_COLORS[user.status],
                   )}
                 >
@@ -454,7 +454,7 @@ export function UserDetailSheet({ user, onClose }: Props) {
                   <div key={log.id} className="flex items-start gap-2 px-3 py-2">
                     <span
                       className={cn(
-                        "mt-0.5 shrink-0 rounded-full px-1.5 py-0.5 font-medium",
+                        "mt-0.5 shrink-0 rounded-full px-1.5 py-0.5 font-semibold",
                         RESULT_COLORS[log.result] ?? "bg-muted text-muted-foreground",
                       )}
                     >

@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { nodesApi } from "@/api/nodes";
+import { getThumbnailCache, setThumbnailCache } from "@/lib/thumbnailCache";
 import type { NodeListItem } from "@/types/nodes";
 
 const STALE_MS = 4 * 60 * 1000;
@@ -7,12 +8,15 @@ const GC_MS = 10 * 60 * 1000;
 
 /**
  * Fetches presigned thumbnail URLs for all image items in ONE batch request.
- * Individual results are stored in per-item cache entries so they survive
- * folder re-fetches without re-downloading from the server.
+ *
+ * Cache hierarchy (checked in order, both survive page refresh via sessionStorage):
+ *   1. React Query in-memory cache  — instant, lost on refresh
+ *   2. sessionStorage               — survives refresh, cleared on tab close
+ *   3. Batch API request            — only for IDs missing from both caches
  *
  * Returns a Map where:
  *   - key absent  → still loading  → show skeleton
- *   - value null  → failed/not image → show icon fallback
+ *   - value null  → no thumbnail   → show icon fallback
  *   - value string → presigned URL → show <img>
  */
 export function useThumbnails(items: NodeListItem[]): Map<string, string | null> {
@@ -22,19 +26,23 @@ export function useThumbnails(items: NodeListItem[]): Map<string, string | null>
     (i) => i.node_type === "file" && i.file_mime_type?.startsWith("image/"),
   );
 
-  // Only batch-fetch IDs whose individual cache entry is missing.
+  // Skip IDs that are in RQ cache OR sessionStorage.
   const uncachedIds = imageItems
     .map((i) => i.id)
-    .filter((id) => qc.getQueryData(["thumbnail", id]) === undefined);
+    .filter((id) => {
+      if (qc.getQueryData(["thumbnail", id]) !== undefined) return false;
+      if (getThumbnailCache(id) !== undefined) return false;
+      return true;
+    });
 
-  // One request for all uncached thumbnails.
   useQuery({
     queryKey: ["thumbnails-batch", uncachedIds.join(",")],
     queryFn: async () => {
       const batch = await nodesApi.thumbnailsBatch(uncachedIds);
-      // Populate individual cache entries so the grid renders immediately.
       for (const [id, url] of Object.entries(batch)) {
-        qc.setQueryData(["thumbnail", id], url ?? null);
+        const value = url ?? null;
+        qc.setQueryData(["thumbnail", id], value);
+        setThumbnailCache(id, value);
       }
       return batch;
     },
@@ -43,12 +51,17 @@ export function useThumbnails(items: NodeListItem[]): Map<string, string | null>
     gcTime: GC_MS,
   });
 
-  // Build the result map from per-item cache (populated above).
+  // Build result map: RQ cache first, sessionStorage fallback.
   const map = new Map<string, string | null>();
   for (const item of imageItems) {
-    const cached = qc.getQueryData<string | null>(["thumbnail", item.id]);
-    if (cached !== undefined) {
-      map.set(item.id, cached);
+    const rq = qc.getQueryData<string | null>(["thumbnail", item.id]);
+    if (rq !== undefined) {
+      map.set(item.id, rq);
+      continue;
+    }
+    const stored = getThumbnailCache(item.id);
+    if (stored !== undefined) {
+      map.set(item.id, stored);
     }
   }
   return map;

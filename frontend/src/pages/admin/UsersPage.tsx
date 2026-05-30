@@ -19,11 +19,11 @@ const STATUS_LABELS: Record<UserStatus, string> = {
 };
 
 const STATUS_COLORS: Record<UserStatus, string> = {
-  pending: "bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-900/30 dark:text-amber-400 dark:ring-amber-500/20",
-  active: "bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20 dark:bg-green-900/30 dark:text-green-400 dark:ring-green-500/20",
-  blocked: "bg-red-50 text-red-700 ring-1 ring-inset ring-red-600/20 dark:bg-red-900/30 dark:text-red-400 dark:ring-red-500/20",
-  rejected: "bg-zinc-100 text-zinc-600 ring-1 ring-inset ring-zinc-500/20 dark:bg-zinc-800 dark:text-zinc-400 dark:ring-zinc-500/20",
-  deleted: "bg-zinc-100 text-zinc-500 ring-1 ring-inset ring-zinc-500/10 dark:bg-zinc-800 dark:text-zinc-500 dark:ring-zinc-500/20",
+  pending: "bg-amber-500 text-white dark:bg-amber-600",
+  active: "bg-green-600 text-white dark:bg-green-700",
+  blocked: "bg-red-600 text-white dark:bg-red-700",
+  rejected: "bg-zinc-500 text-white dark:bg-zinc-600",
+  deleted: "bg-zinc-400 text-white dark:bg-zinc-600",
 };
 
 // ── User row ─────────────────────────────────────────────────────────────────
@@ -66,7 +66,7 @@ function UserRow({ user, onOpen }: { user: UserListItem; onOpen: () => void }) {
       <td className="px-4 py-2 text-sm font-medium">{user.email}</td>
       <td className="px-4 py-2 text-sm text-muted-foreground">@{user.username}</td>
       <td className="px-4 py-2">
-        <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium", STATUS_COLORS[user.status])}>
+        <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-semibold", STATUS_COLORS[user.status])}>
           {STATUS_LABELS[user.status]}
         </span>
       </td>

@@ -24,9 +24,9 @@ const STATUS_LABELS: Record<QuotaIncreaseRequestStatus, string> = {
 };
 
 const STATUS_COLORS: Record<QuotaIncreaseRequestStatus, string> = {
-  pending: "bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-900/30 dark:text-amber-400 dark:ring-amber-500/20",
-  approved: "bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20 dark:bg-green-900/30 dark:text-green-400 dark:ring-green-500/20",
-  rejected: "bg-red-50 text-red-700 ring-1 ring-inset ring-red-600/20 dark:bg-red-900/30 dark:text-red-400 dark:ring-red-500/20",
+  pending: "bg-amber-500 text-white dark:bg-amber-600",
+  approved: "bg-green-600 text-white dark:bg-green-700",
+  rejected: "bg-red-600 text-white dark:bg-red-700",
 };
 
 // ── Server storage info ────────────────────────────────────────────────────────
@@ -194,7 +194,7 @@ function RequestRow({ req }: { req: QuotaIncreaseRequest }) {
           <span className="line-clamp-2">{req.reason || "—"}</span>
         </td>
         <td className="px-4 py-2">
-          <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium", STATUS_COLORS[req.status])}>
+          <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-semibold", STATUS_COLORS[req.status])}>
             {STATUS_LABELS[req.status]}
           </span>
         </td>

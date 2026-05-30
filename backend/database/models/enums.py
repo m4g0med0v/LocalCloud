@@ -651,6 +651,7 @@ class AuditAction(StrEnum):
     NODE_CREATED = "node.created"
     NODE_RENAMED = "node.renamed"
     NODE_MOVED = "node.moved"
+    NODE_UPDATED = "node.updated"
     NODE_DELETED = "node.deleted"
     NODE_RESTORED = "node.restored"
     NODE_PURGED = "node.purged"

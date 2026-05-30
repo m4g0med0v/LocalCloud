@@ -5,6 +5,7 @@ import { getFolderColor } from "./FolderColorDialog";
 import { formatBytes } from "@/hooks/useQuota";
 import { nodesApi } from "@/api/nodes";
 import { queryClient } from "@/lib/query-client";
+import { getThumbnailCache, setThumbnailCache } from "@/lib/thumbnailCache";
 import type { NodeListItem } from "@/types/nodes";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -47,15 +48,25 @@ export function NodeInfoPanel({ item, onClose }: Props) {
   // was already visible in the file grid.
   const [previewUrl, setPreviewUrl] = useState<string | null>(() => {
     if (!isImage) return null;
-    return queryClient.getQueryData<string | null>(["thumbnail", item.id]) ?? null;
+    const rq = queryClient.getQueryData<string | null>(["thumbnail", item.id]);
+    if (rq !== undefined) return rq;
+    return getThumbnailCache(item.id) ?? null;
   });
   const [previewLoading, setPreviewLoading] = useState(!previewUrl && isImage);
 
   useEffect(() => {
-    // Cache hit — already shown via useState initialiser, nothing to do.
-    const cached = queryClient.getQueryData<string | null>(["thumbnail", item.id]);
-    if (cached !== undefined) {
-      setPreviewUrl(cached);
+    // 1. RQ in-memory cache.
+    const rq = queryClient.getQueryData<string | null>(["thumbnail", item.id]);
+    if (rq !== undefined) {
+      setPreviewUrl(rq);
+      setPreviewLoading(false);
+      return;
+    }
+
+    // 2. sessionStorage — survives page refresh.
+    const stored = getThumbnailCache(item.id);
+    if (stored !== undefined) {
+      setPreviewUrl(stored);
       setPreviewLoading(false);
       return;
     }
@@ -63,13 +74,14 @@ export function NodeInfoPanel({ item, onClose }: Props) {
     setPreviewUrl(null);
     if (!isImage) return;
 
-    // Cache miss — fetch the compressed WebP thumbnail (not the full file).
+    // 3. Fetch from API.
     setPreviewLoading(true);
     nodesApi
       .thumbnail(item.id)
       .then((resp) => {
         const url = resp.presigned_url;
         queryClient.setQueryData(["thumbnail", item.id], url);
+        setThumbnailCache(item.id, url);
         setPreviewUrl(url);
       })
       .catch(() => setPreviewUrl(null))

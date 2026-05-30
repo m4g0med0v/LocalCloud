@@ -8,10 +8,10 @@ import type { AuditLog } from "@/types/audit";
 import { cn } from "@/lib/utils";
 
 const RESULT_COLORS: Record<string, string> = {
-  success: "bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20 dark:bg-green-900/30 dark:text-green-400 dark:ring-green-500/20",
-  failure: "bg-red-50 text-red-700 ring-1 ring-inset ring-red-600/20 dark:bg-red-900/30 dark:text-red-400 dark:ring-red-500/20",
-  denied: "bg-orange-50 text-orange-700 ring-1 ring-inset ring-orange-600/20 dark:bg-orange-900/30 dark:text-orange-400 dark:ring-orange-500/20",
-  warning: "bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-900/30 dark:text-amber-400 dark:ring-amber-500/20",
+  success: "bg-green-600 text-white dark:bg-green-700",
+  failure: "bg-red-600 text-white dark:bg-red-700",
+  denied: "bg-orange-600 text-white dark:bg-orange-700",
+  warning: "bg-amber-500 text-white dark:bg-amber-600",
 };
 
 const RESULT_LABELS: Record<string, string> = {
@@ -36,7 +36,7 @@ function AuditRow({ log }: { log: AuditLog }) {
         <td className="px-4 py-2 text-xs font-mono">{log.action}</td>
         <td className="px-4 py-2">
           <span className={cn(
-            "inline-flex rounded-full px-2 py-0.5 text-xs font-medium",
+            "inline-flex rounded-full px-2 py-0.5 text-xs font-semibold",
             RESULT_COLORS[log.result] ?? "bg-muted text-muted-foreground"
           )}>
             {RESULT_LABELS[log.result] ?? log.result}

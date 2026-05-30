@@ -34,7 +34,7 @@ export const publicLinksApi = {
 
   download: (token: string) =>
     api
-      .post<PublicLinkDownloadResponse>(`/public-links/public/${token}/download`, { token })
+      .post<PublicLinkDownloadResponse>(`/public-links/public/${token}/download`)
       .then((r) => r.data),
 
   revoke: (id: string, data: PublicLinkRevokeRequest = {}) =>

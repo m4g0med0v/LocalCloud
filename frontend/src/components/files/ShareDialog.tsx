@@ -15,15 +15,6 @@ import {
 import type { NodeType } from "@/types/nodes";
 import { cn } from "@/lib/utils";
 
-function useDebounce(value: string, ms: number) {
-  const [d, setD] = useState(value);
-  useEffect(() => {
-    const id = setTimeout(() => setD(value), ms);
-    return () => clearTimeout(id);
-  }, [value, ms]);
-  return d;
-}
-
 function shareUrl(token: string) {
   return `${window.location.origin}/share/${token}`;
 }

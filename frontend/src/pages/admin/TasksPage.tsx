@@ -17,11 +17,11 @@ const STATUS_LABELS: Record<BackgroundTaskStatus, string> = {
 };
 
 const STATUS_COLORS: Record<BackgroundTaskStatus, string> = {
-  pending: "bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-900/30 dark:text-amber-400 dark:ring-amber-500/20",
-  running: "bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-700/20 dark:bg-blue-900/30 dark:text-blue-400 dark:ring-blue-500/20",
-  completed: "bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20 dark:bg-green-900/30 dark:text-green-400 dark:ring-green-500/20",
-  failed: "bg-red-50 text-red-700 ring-1 ring-inset ring-red-600/20 dark:bg-red-900/30 dark:text-red-400 dark:ring-red-500/20",
-  cancelled: "bg-zinc-100 text-zinc-600 ring-1 ring-inset ring-zinc-500/20 dark:bg-zinc-800 dark:text-zinc-400 dark:ring-zinc-500/20",
+  pending: "bg-amber-500 text-white dark:bg-amber-600",
+  running: "bg-blue-600 text-white dark:bg-blue-700",
+  completed: "bg-green-600 text-white dark:bg-green-700",
+  failed: "bg-red-600 text-white dark:bg-red-700",
+  cancelled: "bg-zinc-500 text-white dark:bg-zinc-600",
 };
 
 function TaskRow({ task }: { task: BackgroundTaskListItem }) {
@@ -42,24 +42,11 @@ function TaskRow({ task }: { task: BackgroundTaskListItem }) {
     <tr className="border-b last:border-0 hover:bg-muted/40 transition-colors">
       <td className="px-4 py-2 text-xs font-mono text-muted-foreground">{task.task_type}</td>
       <td className="px-4 py-2">
-        <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium", STATUS_COLORS[task.status])}>
+        <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-semibold", STATUS_COLORS[task.status])}>
           {STATUS_LABELS[task.status]}
         </span>
       </td>
       <td className="px-4 py-2 text-xs text-muted-foreground">{task.priority}</td>
-      <td className="px-4 py-2">
-        {task.status === "running" && (
-          <div className="flex items-center gap-2">
-            <div className="h-1.5 w-24 rounded-full bg-muted overflow-hidden">
-              <div
-                className="h-full bg-primary rounded-full transition-all"
-                style={{ width: `${task.progress_percent}%` }}
-              />
-            </div>
-            <span className="text-xs text-muted-foreground">{task.progress_percent}%</span>
-          </div>
-        )}
-      </td>
       <td className="px-4 py-2 text-xs text-muted-foreground whitespace-nowrap">
         {new Date(task.created_at).toLocaleString("ru-RU")}
       </td>
@@ -140,7 +127,6 @@ export function TasksPage() {
               <th className="px-4 py-2 text-xs font-medium text-muted-foreground">Тип</th>
               <th className="px-4 py-2 text-xs font-medium text-muted-foreground">Статус</th>
               <th className="px-4 py-2 text-xs font-medium text-muted-foreground">Приоритет</th>
-              <th className="px-4 py-2 text-xs font-medium text-muted-foreground">Прогресс</th>
               <th className="px-4 py-2 text-xs font-medium text-muted-foreground">Создана</th>
               <th className="px-4 py-2 text-xs font-medium text-muted-foreground">Запущена</th>
               <th className="px-4 py-2 text-xs font-medium text-muted-foreground"></th>
@@ -150,7 +136,7 @@ export function TasksPage() {
             {isLoading
               ? Array.from({ length: 6 }).map((_, i) => (
                   <tr key={i} className="border-b last:border-0">
-                    {Array.from({ length: 7 }).map((__, j) => (
+                    {Array.from({ length: 6 }).map((__, j) => (
                       <td key={j} className="px-4 py-2">
                         <Skeleton className="h-4 rounded" />
                       </td>
@@ -160,7 +146,7 @@ export function TasksPage() {
               : tasks.length === 0
               ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
                     Задач нет.
                   </td>
                 </tr>

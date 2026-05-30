@@ -569,6 +569,8 @@ class NodesService:
                         flush=True,
                         refresh=False,
                     )
+                    if audit_action == AuditAction.NODE_MOVED:
+                        audit_action = AuditAction.NODE_UPDATED
 
                 node = await uow.nodes.get_required_by_id(node_id)
                 snapshot = _node_snapshot(node)
@@ -748,7 +750,7 @@ class NodesService:
             node_id=node_id,
             actor_id=actor_id,
             access_action=PermissionAction.SHARE,
-            audit_action=AuditAction.NODE_MOVED,
+            audit_action=AuditAction.NODE_UPDATED,
             message="Filesystem node visibility updated.",
             mutate=lambda uow: uow.nodes.update_visibility(
                 node_id=node_id,
