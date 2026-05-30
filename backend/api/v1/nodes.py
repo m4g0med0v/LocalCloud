@@ -41,6 +41,8 @@ from schemas.nodes import (
     NodeSearchQuery,
     NodeTreeItem,
     NodeUpdate,
+    ThumbnailBatchRequest,
+    ThumbnailBatchResponse,
 )
 from security import (
     CurrentActiveUserDependency,
@@ -155,6 +157,38 @@ async def search_nodes(
     """
 
     return await nodes_service.search_nodes(params, user_id=current_user.id)
+
+
+@router.post(
+    "/thumbnails/batch",
+    response_model=ThumbnailBatchResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def get_thumbnails_batch(
+    data: ThumbnailBatchRequest,
+    current_user: CurrentActiveUserDependency,
+    downloads_service: DownloadsService = Depends(get_downloads_service_dependency),
+) -> ThumbnailBatchResponse:
+    """Возвращает presigned URL для thumbnail каждого из запрошенных узлов.
+
+    Принимает список идентификаторов узлов и параллельно генерирует presigned URL
+    для каждого из них. Для недоступных или неизображений узлов возвращает null.
+    Позволяет загружать все thumbnail папки одним запросом вместо N запросов.
+
+    Args:
+        data: Запрос со списком идентификаторов узлов (не более 100).
+        current_user: Текущий активный пользователь.
+        downloads_service: Сервис скачивания, выполняющий генерацию URL.
+
+    Returns:
+        Словарь node_id → presigned URL (null если узел недоступен).
+    """
+
+    thumbnails = await downloads_service.create_thumbnail_urls_batch(
+        node_ids=data.node_ids,
+        user_id=current_user.id,
+    )
+    return ThumbnailBatchResponse(thumbnails=thumbnails)
 
 
 @router.get(

@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import mimetypes
 from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime, timedelta
@@ -201,6 +202,35 @@ class DownloadsService:
                 operation=operation,
                 message="Failed to create thumbnail URL.",
             ) from exc
+
+    async def create_thumbnail_urls_batch(
+        self,
+        *,
+        node_ids: list[UUID],
+        user_id: UUID,
+    ) -> dict[str, str | None]:
+        """Возвращает presigned URL thumbnail для каждого из запрошенных узлов.
+
+        Запускает получение URL параллельно. Для узлов, к которым нет доступа
+        или которые не являются изображениями, возвращает None.
+
+        Args:
+            node_ids: Список идентификаторов узлов.
+            user_id: Идентификатор текущего пользователя.
+
+        Returns:
+            Словарь node_id (строка) → presigned URL или None.
+        """
+
+        tasks = [
+            self.create_thumbnail_url(node_id=nid, user_id=user_id)
+            for nid in node_ids
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        return {
+            str(nid): (r.presigned_url if not isinstance(r, BaseException) else None)
+            for nid, r in zip(node_ids, results)
+        }
 
     async def stream_file(
         self,

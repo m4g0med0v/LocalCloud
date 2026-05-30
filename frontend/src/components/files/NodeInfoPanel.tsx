@@ -4,6 +4,7 @@ import { FileIcon } from "./FileIcon";
 import { getFolderColor } from "./FolderColorDialog";
 import { formatBytes } from "@/hooks/useQuota";
 import { nodesApi } from "@/api/nodes";
+import { queryClient } from "@/lib/query-client";
 import type { NodeListItem } from "@/types/nodes";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -39,19 +40,39 @@ interface Props {
 }
 
 export function NodeInfoPanel({ item, onClose }: Props) {
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
   const isImage = item.node_type === "file" && !!item.file_mime_type?.startsWith("image/");
   const folderColor = item.node_type === "folder" ? getFolderColor(item.id) : null;
 
+  // Initialise from the grid thumbnail cache — instant display when the item
+  // was already visible in the file grid.
+  const [previewUrl, setPreviewUrl] = useState<string | null>(() => {
+    if (!isImage) return null;
+    return queryClient.getQueryData<string | null>(["thumbnail", item.id]) ?? null;
+  });
+  const [previewLoading, setPreviewLoading] = useState(!previewUrl && isImage);
+
   useEffect(() => {
+    // Cache hit — already shown via useState initialiser, nothing to do.
+    const cached = queryClient.getQueryData<string | null>(["thumbnail", item.id]);
+    if (cached !== undefined) {
+      setPreviewUrl(cached);
+      setPreviewLoading(false);
+      return;
+    }
+
     setPreviewUrl(null);
     if (!isImage) return;
+
+    // Cache miss — fetch the compressed WebP thumbnail (not the full file).
     setPreviewLoading(true);
     nodesApi
-      .download(item.id)
-      .then((resp) => setPreviewUrl(resp.presigned_url))
-      .catch(() => {})
+      .thumbnail(item.id)
+      .then((resp) => {
+        const url = resp.presigned_url;
+        queryClient.setQueryData(["thumbnail", item.id], url);
+        setPreviewUrl(url);
+      })
+      .catch(() => setPreviewUrl(null))
       .finally(() => setPreviewLoading(false));
   }, [item.id, isImage]);
 

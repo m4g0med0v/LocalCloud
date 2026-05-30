@@ -61,13 +61,15 @@ export function UploadPanel() {
           {active > 0 ? `Загрузка файлов (${active})` : "Загрузки"}
         </p>
         {finished > 1 && (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-5 w-5"
             onClick={dismissAllDone}
-            className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="Закрыть завершённые"
           >
-            Закрыть завершённые
-          </button>
+            <X className="h-3 w-3" />
+          </Button>
         )}
       </div>
       <div className="max-h-52 overflow-y-auto px-3 pb-2 pt-1">

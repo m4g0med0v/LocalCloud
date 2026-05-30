@@ -160,23 +160,6 @@ async def delete_object_from_storage_handler(
         )
 
 
-async def clean_expired_uploads_handler(
-    context: WorkerTaskExecutionContext,
-) -> WorkerTaskExecutionResult:
-    """Заглушка до реализации dedicated cleanup uploads handler."""
-
-    return failure_result(
-        error_message="Обработчик clean_expired_uploads пока не реализован.",
-        error_code="not_implemented",
-        result_data={
-            "scanned_count": 0,
-            "purged_count": 0,
-            "deleted_storage_objects_count": 0,
-            "failed_count": 1,
-        },
-        retry=False,
-    )
-
 
 async def _fallback_cleanup(
     *,
@@ -261,5 +244,4 @@ def _optional_payload_uuid(payload: Any, key: str) -> UUID | None:
 __all__ = [
     "clean_trash_handler",
     "delete_object_from_storage_handler",
-    "clean_expired_uploads_handler",
 ]

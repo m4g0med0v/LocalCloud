@@ -1,13 +1,28 @@
 import { useParams } from "react-router-dom";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useState, useEffect, useRef } from "react";
-import { Download, FileText, Folder, Loader2, AlertTriangle } from "lucide-react";
+import { Download, FileText, Folder, Loader2, AlertTriangle, ImageIcon } from "lucide-react";
 import { toast } from "sonner";
 import { publicLinksApi } from "@/api/public-links";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatBytes } from "@/hooks/useQuota";
 import type { BackgroundTaskStatus } from "@/types/public-links";
 
+const IMAGE_EXT = /\.(jpe?g|png|gif|webp|bmp|avif|svg)$/i;
+
+function isImageFile(name?: string | null, mime?: string | null): boolean {
+  if (mime?.startsWith("image/")) return true;
+  return IMAGE_EXT.test(name ?? "");
+}
+
+function formatExpiry(iso: string) {
+  return new Date(iso).toLocaleDateString("ru-RU", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
 
 export function SharePage() {
   const { token } = useParams<{ token: string }>();
@@ -19,17 +34,16 @@ export function SharePage() {
     retry: false,
   });
 
-  const download = useMutation({
-    mutationFn: () => publicLinksApi.download(token!),
-    onSuccess: (resp) => {
-      const a = document.createElement("a");
-      a.href = resp.presigned_url;
-      a.download = resp.filename ?? "download";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    },
-    onError: () => toast.error("Не удалось скачать файл"),
+  const node = link?.node;
+  const isFolder = node?.node_type === "folder";
+  const isImage = !isFolder && isImageFile(node?.name, node?.file_mime_type);
+
+  // Pre-fetch the presigned URL — used for both image preview and download.
+  const { data: fileData, isLoading: fileLoading } = useQuery({
+    queryKey: ["share-file", token],
+    queryFn: () => publicLinksApi.download(token!),
+    enabled: !!token && !!link && link.status === "active" && !isFolder,
+    staleTime: 3 * 60 * 1000,
   });
 
   const [folderStatus, setFolderStatus] = useState<BackgroundTaskStatus | null>(null);
@@ -42,44 +56,7 @@ export function SharePage() {
     }
   }
 
-  useEffect(() => {
-    return stopPolling;
-  }, []);
-
-  const startFolderArchive = useMutation({
-    mutationFn: () => publicLinksApi.startFolderArchive(token!),
-    onSuccess: (resp) => {
-      setFolderStatus(resp.status);
-      if (resp.status === "completed" && resp.presigned_url) {
-        triggerDownload(resp.presigned_url, resp.filename ?? "archive.zip");
-        return;
-      }
-
-      function schedulePoll() {
-        pollRef.current = setTimeout(async () => {
-          try {
-            const status = await publicLinksApi.pollFolderArchive(token!, resp.task_id);
-            setFolderStatus(status.status);
-            if (status.status === "completed" && status.presigned_url) {
-              pollRef.current = null;
-              triggerDownload(status.presigned_url, status.filename ?? "archive.zip");
-            } else if (status.status === "failed") {
-              pollRef.current = null;
-              toast.error("Не удалось создать архив папки");
-            } else {
-              schedulePoll();
-            }
-          } catch {
-            pollRef.current = null;
-            toast.error("Не удалось получить статус архива");
-          }
-        }, 2000);
-      }
-
-      schedulePoll();
-    },
-    onError: () => toast.error("Не удалось начать создание архива"),
-  });
+  useEffect(() => stopPolling, []);
 
   function triggerDownload(url: string, filename: string) {
     const a = document.createElement("a");
@@ -90,71 +67,165 @@ export function SharePage() {
     document.body.removeChild(a);
   }
 
-  const isFolderArchiving = startFolderArchive.isPending ||
+  function handleFileDownload() {
+    if (fileData) {
+      triggerDownload(fileData.presigned_url, fileData.filename ?? node?.name ?? "download");
+      return;
+    }
+    publicLinksApi
+      .download(token!)
+      .then((r) => triggerDownload(r.presigned_url, r.filename ?? "download"))
+      .catch(() => toast.error("Не удалось скачать файл"));
+  }
+
+  const [folderArchiving, setFolderArchiving] = useState(false);
+
+  async function handleFolderDownload() {
+    setFolderStatus(null);
+    stopPolling();
+    setFolderArchiving(true);
+    try {
+      const resp = await publicLinksApi.startFolderArchive(token!);
+      setFolderStatus(resp.status);
+      if (resp.status === "completed" && resp.presigned_url) {
+        triggerDownload(resp.presigned_url, resp.filename ?? "archive.zip");
+        setFolderArchiving(false);
+        return;
+      }
+      function schedulePoll() {
+        pollRef.current = setTimeout(async () => {
+          try {
+            const status = await publicLinksApi.pollFolderArchive(token!, resp.task_id);
+            setFolderStatus(status.status);
+            if (status.status === "completed" && status.presigned_url) {
+              triggerDownload(status.presigned_url, status.filename ?? "archive.zip");
+              setFolderArchiving(false);
+            } else if (status.status === "failed") {
+              toast.error("Не удалось создать архив папки");
+              setFolderArchiving(false);
+            } else {
+              schedulePoll();
+            }
+          } catch {
+            toast.error("Не удалось получить статус архива");
+            setFolderArchiving(false);
+          }
+        }, 2000);
+      }
+      schedulePoll();
+    } catch {
+      toast.error("Не удалось начать создание архива");
+      setFolderArchiving(false);
+    }
+  }
+
+  const isFolderBusy =
+    folderArchiving ||
     (folderStatus !== null && folderStatus !== "completed" && folderStatus !== "failed");
+
+  // ── Loading ──────────────────────────────────────────────────────────────────
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background p-6">
-        <div className="w-full max-w-sm space-y-4">
-          <Skeleton className="h-16 w-16 rounded-full mx-auto" />
-          <Skeleton className="h-6 w-48 mx-auto" />
-          <Skeleton className="h-4 w-32 mx-auto" />
-          <Skeleton className="h-9 w-full" />
+      <div className="flex min-h-screen items-center justify-center bg-muted/20 p-4">
+        <div className="w-full max-w-md overflow-hidden rounded-2xl border bg-card shadow-lg">
+          <Skeleton className="h-56 w-full rounded-none" />
+          <div className="flex flex-col gap-3 p-6">
+            <Skeleton className="h-5 w-48" />
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="mt-2 h-10 w-full rounded-lg" />
+          </div>
         </div>
       </div>
     );
   }
+
+  // ── Error ────────────────────────────────────────────────────────────────────
 
   if (isError || !link || link.status !== "active") {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background p-6">
-        <div className="flex flex-col items-center gap-4 text-center">
-          <AlertTriangle className="h-12 w-12 text-muted-foreground" />
-          <h1 className="text-xl font-semibold">Ссылка недоступна</h1>
-          <p className="text-sm text-muted-foreground max-w-xs">
-            Эта ссылка устарела, была отозвана или не существует.
-          </p>
+      <div className="flex min-h-screen items-center justify-center bg-muted/20 p-4">
+        <div className="flex flex-col items-center gap-4 rounded-2xl border bg-card p-10 text-center shadow-lg">
+          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
+            <AlertTriangle className="h-7 w-7 text-muted-foreground" />
+          </div>
+          <div>
+            <h1 className="text-lg font-semibold">Ссылка недоступна</h1>
+            <p className="mt-1 max-w-xs text-sm text-muted-foreground">
+              Эта ссылка устарела, была отозвана или не существует.
+            </p>
+          </div>
         </div>
       </div>
     );
   }
 
-  const node = link.node;
-  const isFolder = node?.node_type === "folder";
-  const canDownload = link.permission_type === "download";
+  // ── Shared page ──────────────────────────────────────────────────────────────
+
+  const previewUrl = isImage ? fileData?.presigned_url : null;
+  const sizeBytes = fileData?.size_bytes ?? null;
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-6">
-      <div className="flex w-full max-w-sm flex-col items-center gap-6 rounded-xl border p-8 shadow-sm">
-        {/* Icon */}
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+    <div className="flex min-h-screen items-center justify-center bg-muted/20 p-4">
+      <div className="w-full max-w-md overflow-hidden rounded-2xl border bg-card shadow-lg">
+
+        {/* Image preview */}
+        {isImage && (
+          <div className="flex min-h-52 items-center justify-center bg-muted/30">
+            {fileLoading ? (
+              <Skeleton className="h-52 w-full rounded-none" />
+            ) : previewUrl ? (
+              <img
+                src={previewUrl}
+                alt={node?.name ?? ""}
+                className="max-h-80 w-full object-contain"
+              />
+            ) : (
+              <ImageIcon className="h-12 w-12 text-muted-foreground/40" />
+            )}
+          </div>
+        )}
+
+        {/* Non-image icon */}
+        {!isImage && (
+          <div className="flex items-center justify-center bg-muted/20 py-10">
+            <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-muted">
+              {isFolder ? (
+                <Folder className="h-10 w-10 text-muted-foreground" />
+              ) : (
+                <FileText className="h-10 w-10 text-muted-foreground" />
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Info + actions */}
+        <div className="flex flex-col gap-4 p-6">
+          <div>
+            <h1
+              className="break-all text-base font-semibold leading-snug"
+              title={node?.name ?? undefined}
+            >
+              {node?.name ?? "Файл"}
+            </h1>
+            {sizeBytes != null && (
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                {formatBytes(sizeBytes)}
+              </p>
+            )}
+            {link.description && (
+              <p className="mt-1 text-sm text-muted-foreground">{link.description}</p>
+            )}
+          </div>
+
+          {/* Download button */}
           {isFolder ? (
-            <Folder className="h-8 w-8 text-muted-foreground" />
-          ) : (
-            <FileText className="h-8 w-8 text-muted-foreground" />
-          )}
-        </div>
-
-        {/* Info */}
-        <div className="flex flex-col items-center gap-1 text-center">
-          <h1 className="text-lg font-semibold leading-tight break-all">
-            {node?.name ?? "Файл"}
-          </h1>
-          {link.description && (
-            <p className="mt-1 text-sm text-muted-foreground">{link.description}</p>
-          )}
-        </div>
-
-        {/* Action */}
-        {canDownload ? (
-          isFolder ? (
             <Button
               className="w-full"
-              disabled={isFolderArchiving}
-              onClick={() => { setFolderStatus(null); stopPolling(); startFolderArchive.mutate(); }}
+              disabled={isFolderBusy}
+              onClick={handleFolderDownload}
             >
-              {isFolderArchiving ? (
+              {isFolderBusy ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   {folderStatus === "in_progress" ? "Создаётся архив…" : "Подготовка…"}
@@ -167,29 +238,18 @@ export function SharePage() {
               )}
             </Button>
           ) : (
-            <Button
-              className="w-full"
-              disabled={download.isPending}
-              onClick={() => download.mutate()}
-            >
-              {download.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Download className="mr-2 h-4 w-4" />
-              )}
+            <Button className="w-full" onClick={handleFileDownload}>
+              <Download className="mr-2 h-4 w-4" />
               Скачать
             </Button>
-          )
-        ) : (
-          <p className="text-sm text-muted-foreground">Доступ только для просмотра.</p>
-        )}
-
-        <p className="text-xs text-muted-foreground">
-          Доступ: {link.permission_type === "view" ? "Просмотр" : link.permission_type === "download" ? "Скачивание" : "Загрузка"}
-          {link.expires_at && (
-            <> · до {new Date(link.expires_at).toLocaleDateString("ru-RU")}</>
           )}
-        </p>
+
+          {link.expires_at && (
+            <p className="text-center text-xs text-muted-foreground">
+              Доступна до {formatExpiry(link.expires_at)}
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );

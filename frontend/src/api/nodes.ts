@@ -25,6 +25,11 @@ export const nodesApi = {
   thumbnail: (id: string) =>
     api.get<FileDownloadResponse>(`/nodes/${id}/thumbnail`).then((r) => r.data),
 
+  thumbnailsBatch: (nodeIds: string[]) =>
+    api
+      .post<{ thumbnails: Record<string, string | null> }>("/nodes/thumbnails/batch", { node_ids: nodeIds })
+      .then((r) => r.data.thumbnails),
+
   softDelete: (id: string) =>
     api.delete(`/nodes/${id}`).then((r) => r.data),
 

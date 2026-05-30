@@ -19,6 +19,8 @@ export function useFileBrowser(nodeId?: string) {
     },
     enabled: !nodeId,
     placeholderData: keepPreviousData,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
   });
 
   const folderQuery = useQuery({
@@ -34,6 +36,8 @@ export function useFileBrowser(nodeId?: string) {
     },
     enabled: !!nodeId,
     placeholderData: keepPreviousData,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
   });
 
   return nodeId ? folderQuery : rootQuery;

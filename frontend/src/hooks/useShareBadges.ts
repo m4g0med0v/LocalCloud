@@ -20,7 +20,9 @@ export function useShareBadges(items: NodeListItem[]): Map<string, ShareBadge> {
     queries: ids.map((id) => ({
       queryKey: ["public-links", "node", id],
       queryFn: () => publicLinksApi.listForNode(id),
-      staleTime: 3 * 60 * 1000,
+      staleTime: 10 * 60 * 1000,
+      refetchOnWindowFocus: false,
+      refetchOnMount: false,
     })),
   });
 
@@ -29,7 +31,9 @@ export function useShareBadges(items: NodeListItem[]): Map<string, ShareBadge> {
     queries: ids.map((id) => ({
       queryKey: ["permissions", "node", id, "badge"],
       queryFn: () => permissionsApi.listForNode(id, { active_only: true, limit: 1 }),
-      staleTime: 3 * 60 * 1000,
+      staleTime: 10 * 60 * 1000,
+      refetchOnWindowFocus: false,
+      refetchOnMount: false,
     })),
   });
 

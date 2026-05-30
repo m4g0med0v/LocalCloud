@@ -106,7 +106,7 @@ def build_default_registry() -> WorkerTaskRegistry:
     )
     clean_trash_handler = _load_handler("workers.cleanup", "clean_trash_handler")
     clean_expired_uploads_handler = _load_handler(
-        "workers.cleanup",
+        "workers.uploads",
         "clean_expired_uploads_handler",
     )
     clean_expired_public_links_handler = _load_handler(

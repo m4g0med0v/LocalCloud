@@ -23,8 +23,8 @@ from workers.types import WorkerTaskExecutionContext, WorkerTaskExecutionResult
 logger = get_logger(__name__)
 
 _TEXT_PREVIEW_MAX_BYTES = 4096
-_IMAGE_PREVIEW_QUALITY = 70
-_IMAGE_PREVIEW_MAX_DIMENSION = 800
+_IMAGE_PREVIEW_QUALITY = 75
+_IMAGE_PREVIEW_MAX_DIMENSION = 400
 
 _PREVIEW_SUPPORTED_MIME_PREFIXES: tuple[str, ...] = (
     "image/",

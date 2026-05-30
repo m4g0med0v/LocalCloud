@@ -709,3 +709,31 @@ class NodeOperationResponse(BaseSchema):
         min_length=1,
         description="Человекочитаемое сообщение о результате операции.",
     )
+
+
+class ThumbnailBatchRequest(BaseSchema):
+    """Запрос на пакетное получение thumbnail URL для нескольких узлов.
+
+    Attributes:
+        node_ids: Список идентификаторов узлов файловой системы.
+    """
+
+    node_ids: list[UUID] = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="Список идентификаторов узлов (не более 100).",
+    )
+
+
+class ThumbnailBatchResponse(BaseSchema):
+    """Ответ с presigned URL для thumbnail каждого запрошенного узла.
+
+    Attributes:
+        thumbnails: Словарь node_id → presigned URL (null если недоступен).
+    """
+
+    thumbnails: dict[str, str | None] = Field(
+        ...,
+        description="Словарь node_id (строка) → presigned URL или null.",
+    )
